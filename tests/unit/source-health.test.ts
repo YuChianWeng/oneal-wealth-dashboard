@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/server-only", () => ({
+  assertServerOnly: vi.fn(),
+}));
+
 import { aggregateHealth } from "@/lib/source-health";
 import type { SourceHealth } from "@/lib/source-health";
 
@@ -83,9 +88,11 @@ describe("SourceHealth safe fields", () => {
       lastSuccessfulReadAt: null,
       recordCount: 0,
       warningCount: 0,
+      errorCode: "TEST_ERR",
     };
 
     const keys = Object.keys(h).sort();
+    // errorCode is optional but included here for key enumeration
     expect(keys).toEqual([
       "errorCode",
       "lastModifiedAt",

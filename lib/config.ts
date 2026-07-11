@@ -80,7 +80,7 @@ if (!isInside(OBSIDIAN_VAULT_PATH, VAULT_ROOT)) {
 
 // --- Existence checks (warn, don't crash) ---
 
-let existingWarnings: string[] = [];
+const existingWarnings: string[] = [];
 
 if (!existsSync(FINANCE_DB_PATH)) {
   const msg = `FINANCE_DB_PATH "${FINANCE_DB_PATH}" does not exist — finance features will be unavailable`;

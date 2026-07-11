@@ -34,7 +34,7 @@ export interface SourceHealth {
 // Aggregation
 // ---------------------------------------------------------------------------
 
-interface AggregateInput {
+export interface AggregateInput {
   sources: SourceHealth[];
   /** How many sources must be unavailable to classify the whole system as unavailable. */
   unavailableThreshold?: number;

@@ -6,7 +6,7 @@
  * bundled into client code.
  */
 
-// eslint-disable-next-line import/no-unassigned-import
+// server-only null export (import side-effect)
 import "server-only";
 
 /**
