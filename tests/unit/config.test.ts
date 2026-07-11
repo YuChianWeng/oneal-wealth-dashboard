@@ -28,10 +28,9 @@ async function loadConfig(env: Record<string, string | undefined>) {
   // Stub env before importing
   vi.stubEnv("FINANCE_DB_PATH", env.FINANCE_DB_PATH ?? "");
   vi.stubEnv("OBSIDIAN_VAULT_PATH", env.OBSIDIAN_VAULT_PATH ?? "");
-  if (env.APP_TIMEZONE !== undefined)
-    vi.stubEnv("APP_TIMEZONE", env.APP_TIMEZONE);
-  if (env.APP_ORIGIN !== undefined) vi.stubEnv("APP_ORIGIN", env.APP_ORIGIN);
-  if (env.PORT !== undefined) vi.stubEnv("PORT", env.PORT);
+  vi.stubEnv("APP_TIMEZONE", env.APP_TIMEZONE ?? "");
+  vi.stubEnv("APP_ORIGIN", env.APP_ORIGIN ?? "");
+  vi.stubEnv("PORT", env.PORT ?? "");
 
   return import("@/lib/config");
 }
@@ -79,7 +78,9 @@ describe("config validation", () => {
       FINANCE_DB_PATH: "/tmp/evil.db",
       OBSIDIAN_VAULT_PATH: VAULT_ROOT,
     });
-    expect(config.warnings.some(w => w.includes("outside the allowed data root"))).toBe(true);
+    expect(
+      config.warnings.some((w) => w.includes("outside the allowed data root")),
+    ).toBe(true);
   });
 
   it("warns when OBSIDIAN_VAULT_PATH is outside vault root", async () => {
@@ -87,7 +88,9 @@ describe("config validation", () => {
       FINANCE_DB_PATH: `${DATA_ROOT}/finance.db`,
       OBSIDIAN_VAULT_PATH: "/tmp/evil-vault",
     });
-    expect(config.warnings.some(w => w.includes("outside the allowed vault root"))).toBe(true);
+    expect(
+      config.warnings.some((w) => w.includes("outside the allowed vault root")),
+    ).toBe(true);
   });
 
   it("warns when vault path is a substring but not actually inside", async () => {
@@ -96,7 +99,9 @@ describe("config validation", () => {
       FINANCE_DB_PATH: `${DATA_ROOT}/finance.db`,
       OBSIDIAN_VAULT_PATH: "/home/ubuntu/ObsidianVaultEvil",
     });
-    expect(config.warnings.some(w => w.includes("outside the allowed vault root"))).toBe(true);
+    expect(
+      config.warnings.some((w) => w.includes("outside the allowed vault root")),
+    ).toBe(true);
   });
 
   it("accepts vault path exactly equal to root", async () => {

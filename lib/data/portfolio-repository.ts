@@ -47,12 +47,24 @@ function isOpenPosition(fm: Record<string, unknown>): boolean {
   );
 }
 
+function numberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/[%,$\s,]/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /**
  * Convert a raw position note into a validated PositionSummary.
  */
 function parsePosition(note: RawNote): Result<PositionSummary, SourceError> {
   const fm = note.frontmatter;
-  const symbol = String(fm.symbol ?? fm.Symbol ?? "").trim();
+  // Canonical vault notes use ticker / entry_price / current_price; legacy
+  // dashboard fixtures use camelCase. Support both without changing source data.
+  const symbol = String(fm.symbol ?? fm.ticker ?? fm.Symbol ?? "").trim();
 
   if (!symbol) {
     return err(
@@ -63,27 +75,51 @@ function parsePosition(note: RawNote): Result<PositionSummary, SourceError> {
     );
   }
 
+  const shares = numberOrNull(fm.shares ?? fm.Shares) ?? 0;
+  const avgCost =
+    numberOrNull(
+      fm.avgCost ?? fm["avg-cost"] ?? fm.entry_price ?? fm.AvgCost,
+    ) ?? 0;
+  const currentPrice = numberOrNull(
+    fm.currentPrice ??
+      fm["current-price"] ??
+      fm.current_price ??
+      fm.CurrentPrice,
+  );
+  const marketValue =
+    numberOrNull(fm.marketValue ?? fm["market-value"] ?? fm.MarketValue) ??
+    (currentPrice === null ? null : shares * currentPrice);
+  const unrealizedPnl =
+    numberOrNull(
+      fm.unrealizedPnl ?? fm["unrealized-pnl"] ?? fm.UnrealizedPnl,
+    ) ?? (marketValue === null ? null : marketValue - shares * avgCost);
+  const unrealizedPnlPct = numberOrNull(
+    fm.unrealizedPnlPct ??
+      fm["unrealized-pnl-pct"] ??
+      fm.unrealized_pnl ??
+      fm.UnrealizedPnlPct,
+  );
+
   const rawPosition = {
     symbol,
     name: String(fm.name ?? fm.Name ?? symbol),
-    shares: Number(fm.shares ?? fm.Shares ?? 0),
-    avgCost: Number(fm.avgCost ?? fm["avg-cost"] ?? fm.AvgCost ?? 0),
-    currentPrice:
-      fm.currentPrice ?? fm["current-price"] ?? fm.CurrentPrice ?? null,
-    marketValue: fm.marketValue ?? fm["market-value"] ?? fm.MarketValue ?? null,
-    unrealizedPnl:
-      fm.unrealizedPnl ?? fm["unrealized-pnl"] ?? fm.UnrealizedPnl ?? null,
-    unrealizedPnlPct:
-      fm.unrealizedPnlPct ??
-      fm["unrealized-pnl-pct"] ??
-      fm.UnrealizedPnlPct ??
-      null,
+    shares,
+    avgCost,
+    currentPrice,
+    marketValue,
+    unrealizedPnl,
+    unrealizedPnlPct,
     sector: fm.sector ?? fm.Sector ?? null,
     theme: fm.theme ?? fm.Theme ?? null,
-    conviction: fm.conviction ?? fm.Conviction ?? null,
+    conviction: numberOrNull(fm.conviction ?? fm.Conviction),
     status: fm.status ?? fm.Status ?? "open",
     lastChecked:
-      fm.lastChecked ?? fm["last-checked"] ?? fm.LastChecked ?? fm.date ?? null,
+      fm.lastChecked ??
+      fm["last-checked"] ??
+      fm.last_checked ??
+      fm.LastChecked ??
+      fm.date ??
+      null,
   };
 
   // Validate through zod schema
