@@ -1,0 +1,42 @@
+# Git
+.git
+.gitattributes
+.gitignore
+
+# Build artifacts (produced fresh by the builder stage)
+.next
+out
+*.tsbuildinfo
+
+# Dependencies (re‑installed via npm ci)
+node_modules
+
+# Tests
+tests
+coverage
+playwright-report
+test-results
+
+# Documentation (except README.md)
+docs
+*.md
+!README.md
+
+# Editor / IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files (use env_file / secrets in compose)
+.env
+.env.local
+.env.development
+.env.production
+
+# Hermes agent
+.hermes
+
+# OS junk
+.DS_Store
+Thumbs.db

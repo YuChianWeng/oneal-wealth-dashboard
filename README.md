@@ -44,3 +44,28 @@ See [`.env.example`](.env.example). It contains only non-secret configuration va
 - `PORT`
 
 All of these variables are currently reserved for future data and deployment configuration; the bootstrap application does not consume them yet.
+
+## Production deployment (Docker + Cloudflare Tunnel)
+
+The dashboard is packaged for private, localhost-only production deployment.
+See **[docs/deployment.md](docs/deployment.md)** for full instructions.
+
+### Quickstart
+
+```bash
+# Set paths to your data
+export FINANCE_DB_PATH=/path/to/finance.db
+export OBSIDIAN_VAULT_PATH=/path/to/obsidian/vault
+
+# Build and start
+docker compose build
+docker compose up -d
+
+# Verify
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+The dashboard is bound to `127.0.0.1:3000` only.  Expose it via
+[Cloudflare Tunnel](docs/cloudflare-access-handoff.md) with
+[Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/)
+as the sole authentication gate — the app itself has no login.

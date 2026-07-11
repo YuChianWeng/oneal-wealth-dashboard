@@ -1,0 +1,39 @@
+services:
+  dashboard:
+    build: .
+    container_name: oneal-wealth-dashboard
+
+    # Only listen on localhost — never reachable from the network
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    restart: unless-stopped
+
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - APP_TIMEZONE=Asia/Taipei
+      - APP_ORIGIN=http://127.0.0.1:3000
+      - FINANCE_DB_PATH=/data/finance.db
+      - OBSIDIAN_VAULT_PATH=/data/obsidian
+
+    env_file:
+      - .env.production
+
+    volumes:
+      # Read‑only mounts for source data — the dashboard never writes them
+      - type: bind
+        source: ${FINANCE_DB_PATH:-/dev/null}
+        target: /data/finance.db
+        read_only: true
+      - type: bind
+        source: ${OBSIDIAN_VAULT_PATH:-/dev/null}
+        target: /data/obsidian
+        read_only: true
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
