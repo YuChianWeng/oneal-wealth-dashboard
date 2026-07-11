@@ -46,7 +46,9 @@ function isInside(candidate: string, parent: string): boolean {
   // Simple prefix check — real path traversal is handled at the read layer.
   const normCandidate = candidate.replace(/\/+$/, "");
   const normParent = parent.replace(/\/+$/, "");
-  return normCandidate === normParent || normCandidate.startsWith(normParent + "/");
+  return (
+    normCandidate === normParent || normCandidate.startsWith(normParent + "/")
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 
 // Mock the server-only guard before any imports that might use it
 vi.mock("@/lib/server-only", () => ({
@@ -28,7 +28,8 @@ async function loadConfig(env: Record<string, string | undefined>) {
   // Stub env before importing
   vi.stubEnv("FINANCE_DB_PATH", env.FINANCE_DB_PATH ?? "");
   vi.stubEnv("OBSIDIAN_VAULT_PATH", env.OBSIDIAN_VAULT_PATH ?? "");
-  if (env.APP_TIMEZONE !== undefined) vi.stubEnv("APP_TIMEZONE", env.APP_TIMEZONE);
+  if (env.APP_TIMEZONE !== undefined)
+    vi.stubEnv("APP_TIMEZONE", env.APP_TIMEZONE);
   if (env.APP_ORIGIN !== undefined) vi.stubEnv("APP_ORIGIN", env.APP_ORIGIN);
   if (env.PORT !== undefined) vi.stubEnv("PORT", env.PORT);
 
@@ -75,7 +76,10 @@ describe("config validation", () => {
 
   it("rejects FINANCE_DB_PATH outside data root", async () => {
     await expect(
-      loadConfig({ FINANCE_DB_PATH: "/tmp/evil.db", OBSIDIAN_VAULT_PATH: VAULT_ROOT }),
+      loadConfig({
+        FINANCE_DB_PATH: "/tmp/evil.db",
+        OBSIDIAN_VAULT_PATH: VAULT_ROOT,
+      }),
     ).rejects.toThrow(/outside the allowed data root/);
   });
 
@@ -114,8 +118,13 @@ describe("config validation", () => {
 
   it("throws for missing OBSIDIAN_VAULT_PATH", async () => {
     await expect(
-      loadConfig({ FINANCE_DB_PATH: `${DATA_ROOT}/finance.db`, OBSIDIAN_VAULT_PATH: "" }),
-    ).rejects.toThrow(/Missing required environment variable: OBSIDIAN_VAULT_PATH/);
+      loadConfig({
+        FINANCE_DB_PATH: `${DATA_ROOT}/finance.db`,
+        OBSIDIAN_VAULT_PATH: "",
+      }),
+    ).rejects.toThrow(
+      /Missing required environment variable: OBSIDIAN_VAULT_PATH/,
+    );
   });
 
   it("exposes warnings as a readonly array", async () => {
