@@ -26,7 +26,9 @@ describe("CategoryBreakdownSchema", () => {
   });
 
   it("accepts zero amount", () => {
-    expect(CategoryBreakdownSchema.parse({ category: "Food", amount: 0 })).toEqual({
+    expect(
+      CategoryBreakdownSchema.parse({ category: "Food", amount: 0 }),
+    ).toEqual({
       category: "Food",
       amount: 0,
     });
@@ -44,7 +46,11 @@ describe("CategoryBreakdownSchema", () => {
 
   it("rejects extra fields (strict mode)", () => {
     expect(() =>
-      CategoryBreakdownSchema.parse({ category: "Food", amount: 100, secret: "leak" }),
+      CategoryBreakdownSchema.parse({
+        category: "Food",
+        amount: 100,
+        secret: "leak",
+      }),
     ).toThrow();
   });
 });
@@ -60,7 +66,11 @@ describe("AccountBreakdownSchema", () => {
 
   it("rejects extra fields", () => {
     expect(() =>
-      AccountBreakdownSchema.parse({ account: "Savings", amount: 10000, path: "/secret" }),
+      AccountBreakdownSchema.parse({
+        account: "Savings",
+        amount: 10000,
+        path: "/secret",
+      }),
     ).toThrow();
   });
 });
@@ -135,9 +145,7 @@ describe("TransactionRowSchema", () => {
   });
 
   it("rejects non-positive id", () => {
-    expect(() =>
-      TransactionRowSchema.parse({ ...valid, id: 0 }),
-    ).toThrow();
+    expect(() => TransactionRowSchema.parse({ ...valid, id: 0 })).toThrow();
   });
 
   it("rejects invalid type enum", () => {
@@ -170,7 +178,12 @@ describe("AccountInfoSchema", () => {
 
   it("rejects extra fields", () => {
     expect(() =>
-      AccountInfoSchema.parse({ name: "Checking", balance: 100000, type: "bank", iban: "xxx" }),
+      AccountInfoSchema.parse({
+        name: "Checking",
+        balance: 100000,
+        type: "bank",
+        iban: "xxx",
+      }),
     ).toThrow();
   });
 });
@@ -180,7 +193,12 @@ describe("AccountInfoSchema", () => {
 // ---------------------------------------------------------------------------
 describe("LoanInfoSchema", () => {
   it("accepts valid data", () => {
-    const data = { name: "Mortgage", principal: 5_000_000, interest: 12000, remainingBalance: 4_500_000 };
+    const data = {
+      name: "Mortgage",
+      principal: 5_000_000,
+      interest: 12000,
+      remainingBalance: 4_500_000,
+    };
     expect(LoanInfoSchema.parse(data)).toEqual(data);
   });
 });

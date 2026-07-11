@@ -18,7 +18,8 @@ assertServerOnly();
 // ---------------------------------------------------------------------------
 
 const amount = () => z.number().finite();
-const dateStr = () => z.string().datetime({ offset: true }).or(z.string().date());
+const dateStr = () =>
+  z.string().datetime({ offset: true }).or(z.string().date());
 
 // ---------------------------------------------------------------------------
 // Category breakdown
@@ -75,7 +76,13 @@ export const TransactionRowSchema = z
     amount: amount(),
     account: z.string().min(1),
     category: z.string().min(1),
-    type: z.enum(["expense", "income", "investment_settlement", "loan_interest_payment", "loan_principal_repayment"]),
+    type: z.enum([
+      "expense",
+      "income",
+      "investment_settlement",
+      "loan_interest_payment",
+      "loan_principal_repayment",
+    ]),
     currency: z.string().length(3),
     merchant: z.string().optional(),
     note: z.string().optional(),

@@ -45,19 +45,28 @@ describe("aggregateHealth", () => {
   it("returns healthy when all sources are clean", () => {
     expect(aggregateHealth([makeHealthy("finance-db")])).toBe("healthy");
     expect(
-      aggregateHealth([makeHealthy("finance-db"), makeHealthy("obsidian-vault")]),
+      aggregateHealth([
+        makeHealthy("finance-db"),
+        makeHealthy("obsidian-vault"),
+      ]),
     ).toBe("healthy");
   });
 
   it("returns degraded when any source has warnings", () => {
     expect(
-      aggregateHealth([makeHealthy("finance-db"), makeDegraded("obsidian-vault")]),
+      aggregateHealth([
+        makeHealthy("finance-db"),
+        makeDegraded("obsidian-vault"),
+      ]),
     ).toBe("degraded");
   });
 
   it("returns unavailable when any source has an errorCode", () => {
     expect(
-      aggregateHealth([makeHealthy("finance-db"), makeUnavailable("obsidian-vault")]),
+      aggregateHealth([
+        makeHealthy("finance-db"),
+        makeUnavailable("obsidian-vault"),
+      ]),
     ).toBe("unavailable");
   });
 

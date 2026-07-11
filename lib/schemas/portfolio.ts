@@ -18,7 +18,8 @@ assertServerOnly();
 // ---------------------------------------------------------------------------
 
 const amount = () => z.number().finite();
-const dateStr = () => z.string().datetime({ offset: true }).or(z.string().date());
+const dateStr = () =>
+  z.string().datetime({ offset: true }).or(z.string().date());
 
 // ---------------------------------------------------------------------------
 // Position summary

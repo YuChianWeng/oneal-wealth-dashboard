@@ -14,10 +14,12 @@ describe("ResearchSummarySchema", () => {
     symbol: "2330.TW",
     name: "TSMC",
     status: "hold",
-    thesis: "Global semiconductor leader with structural demand growth driven by AI/HPC",
+    thesis:
+      "Global semiconductor leader with structural demand growth driven by AI/HPC",
     catalysts: "N3 ramp, advanced packaging capacity expansion",
     risks: "Geopolitical tension, cyclical semiconductor downturn",
-    invalidation: "Loss of technology leadership or major customer concentration shift",
+    invalidation:
+      "Loss of technology leadership or major customer concentration shift",
     nextStep: "Monitor monthly revenue and capex guidance",
     sourceChecked: "2026-07-10",
   };
@@ -44,14 +46,15 @@ describe("ResearchSummarySchema", () => {
 
   it("rejects extra fields (strict mode)", () => {
     expect(() =>
-      ResearchSummarySchema.parse({ ...valid, rawNotePath: "/vault/trading/stocks/2330.md" }),
+      ResearchSummarySchema.parse({
+        ...valid,
+        rawNotePath: "/vault/trading/stocks/2330.md",
+      }),
     ).toThrow();
   });
 
   it("rejects missing required fields", () => {
-    expect(() =>
-      ResearchSummarySchema.parse({ symbol: "2330.TW" }),
-    ).toThrow();
+    expect(() => ResearchSummarySchema.parse({ symbol: "2330.TW" })).toThrow();
   });
 
   it("rejects bad sourceChecked date format", () => {

@@ -53,9 +53,7 @@ describe("PositionSummarySchema", () => {
   });
 
   it("rejects missing required fields", () => {
-    expect(() =>
-      PositionSummarySchema.parse({ symbol: "2330.TW" }),
-    ).toThrow();
+    expect(() => PositionSummarySchema.parse({ symbol: "2330.TW" })).toThrow();
   });
 
   it("rejects non-finite shares", () => {
@@ -70,13 +68,22 @@ describe("PositionSummarySchema", () => {
 // ---------------------------------------------------------------------------
 describe("HoldingAllocationSchema", () => {
   it("accepts valid data", () => {
-    const data = { category: "Semiconductors", value: 600000, percentage: 45.2 };
+    const data = {
+      category: "Semiconductors",
+      value: 600000,
+      percentage: 45.2,
+    };
     expect(HoldingAllocationSchema.parse(data)).toEqual(data);
   });
 
   it("rejects extra fields", () => {
     expect(() =>
-      HoldingAllocationSchema.parse({ category: "Tech", value: 100, percentage: 10, rawId: 1 }),
+      HoldingAllocationSchema.parse({
+        category: "Tech",
+        value: 100,
+        percentage: 10,
+        rawId: 1,
+      }),
     ).toThrow();
   });
 });
@@ -100,9 +107,7 @@ describe("TradeRecordSchema", () => {
   });
 
   it("rejects invalid side", () => {
-    expect(() =>
-      TradeRecordSchema.parse({ ...valid, side: "hold" }),
-    ).toThrow();
+    expect(() => TradeRecordSchema.parse({ ...valid, side: "hold" })).toThrow();
   });
 
   it("rejects extra fields", () => {
@@ -153,7 +158,11 @@ describe("StockThesisSchema", () => {
 
   it("rejects conviction outside 1-5 range", () => {
     expect(() =>
-      StockThesisSchema.parse({ symbol: "2330.TW", thesis: "ok", conviction: 6 }),
+      StockThesisSchema.parse({
+        symbol: "2330.TW",
+        thesis: "ok",
+        conviction: 6,
+      }),
     ).toThrow();
   });
 });
