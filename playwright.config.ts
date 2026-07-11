@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 3100);
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
+const localBaseURL = `http://127.0.0.1:${port}`;
+const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
+const baseURL = externalBaseURL ?? localBaseURL;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -11,10 +13,15 @@ export default defineConfig({
     baseURL,
     trace: "on-first-retry",
   },
-  webServer: {
-    command: `npm run dev -- --hostname 127.0.0.1 --port ${port}`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-  },
+  // An external base URL owns its server lifecycle. Local smoke tests start an
+  // isolated server unless reuse is explicitly requested.
+  webServer: externalBaseURL
+    ? undefined
+    : {
+        command: `npm run dev -- --hostname 127.0.0.1 --port ${port}`,
+        url: localBaseURL,
+        reuseExistingServer:
+          process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "true",
+      },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });

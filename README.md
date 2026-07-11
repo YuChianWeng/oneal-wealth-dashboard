@@ -16,18 +16,18 @@ Future data access must preserve this boundary: source data may be read for pres
 
 ```bash
 cp .env.example .env.local
-npm install
+npm ci
 npm run dev
 ```
 
-`FINANCE_DB_PATH` and `OBSIDIAN_VAULT_PATH` are intentionally optional placeholders in this bootstrap. This task does not read either source.
+The values in `.env.example` are reserved for future configuration and are not read by the current bootstrap. In particular, `FINANCE_DB_PATH` and `OBSIDIAN_VAULT_PATH` remain optional placeholders; this task does not read either source.
 
 ## Commands
 
 ```bash
 npm run lint
 npm run typecheck
-npm test -- --run
+npm test
 npm run build
 npm run test:e2e
 npm run format:check
@@ -42,3 +42,5 @@ See [`.env.example`](.env.example). It contains only non-secret configuration va
 - `APP_TIMEZONE`
 - `APP_ORIGIN`
 - `PORT`
+
+All of these variables are currently reserved for future data and deployment configuration; the bootstrap application does not consume them yet.
