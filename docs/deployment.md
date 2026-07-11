@@ -22,11 +22,11 @@ docker compose build
 docker compose up -d
 
 # 4. Verify it is healthy
-curl -fsS http://127.0.0.1:3000/api/health
+curl -fsS http://127.0.0.1:3003/api/health
 # → {"version":1,"data":{"status":"ok","timestamp":"…"}}
 
 # 5. (Optional) check the homepage returns HTTP 200
-curl -I http://127.0.0.1:3000/
+curl -I http://127.0.0.1:3003/
 ```
 
 ## Managing the container
@@ -47,10 +47,10 @@ These variables are consumed by the Next.js runtime inside the container.
 
 | Variable              | Required | Default                    | Description                                   |
 | --------------------- | -------- | -------------------------- | --------------------------------------------- |
-| `PORT`                | No       | `3000`                     | Port the Next.js server listens on            |
+| `PORT`                | No       | `3003`                     | Port the Next.js server listens on            |
 | `NODE_ENV`            | No       | `production`               | Node environment                              |
 | `APP_TIMEZONE`        | No       | `Asia/Taipei`              | Timezone for date rendering                   |
-| `APP_ORIGIN`          | No       | `http://127.0.0.1:3000`    | Canonical origin for the app                  |
+| `APP_ORIGIN`          | No       | `http://127.0.0.1:3003`    | Canonical origin for the app                  |
 | `FINANCE_DB_PATH`     | Yes      | –                          | Path to the SQLite finance database (read‑only inside container) |
 | `OBSIDIAN_VAULT_PATH` | Yes      | –                          | Path to the Obsidian vault root (read‑only inside container) |
 
@@ -71,12 +71,12 @@ SOME_SECRET=value
 │  ┌──────────────────────────────────────────┐    │
 │  │  container (oneal-wealth-dashboard)      │    │
 │  │                                          │    │
-│  │  Next.js server :3000                    │    │
+│  │  Next.js server :3003                    │    │
 │  │       │                                  │    │
 │  │       ├── /data/finance.db  (ro bind)    │    │
 │  │       └── /data/obsidian/   (ro bind)    │    │
 │  └──────────────┬───────────────────────────┘    │
-│                 │ 127.0.0.1:3000                 │
+│                 │ 127.0.0.1:3003                 │
 │  ┌──────────────▼───────────────────────────┐    │
 │  │  Cloudflare Tunnel (cloudflared)         │    │
 │  │  → wealth.onealweng.com                  │    │

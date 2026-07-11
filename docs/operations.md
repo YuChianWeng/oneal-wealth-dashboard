@@ -6,11 +6,11 @@ Day-to-day procedures for the Oneal Wealth Dashboard production deployment.
 
 ```bash
 # Basic liveness
-curl -fsS http://localhost:3000/api/health
+curl -fsS http://localhost:3003/api/health
 # → {"version":1,"data":{"status":"ok","timestamp":"2026-07-11T15:36:40.950Z"}}
 
 # Full dashboard availability
-curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3003/
 # → 200
 ```
 
@@ -35,7 +35,7 @@ All commands run from the project root (`/home/ubuntu/services/oneal-wealth-dash
 Visit `/settings/data-status` or call the API:
 
 ```bash
-curl -s http://localhost:3000/api/data-status | python3 -m json.tool
+curl -s http://localhost:3003/api/data-status | python3 -m json.tool
 ```
 
 This returns a health report for each data source (finance DB, Obsidian vault) including:
@@ -56,7 +56,7 @@ git checkout <previous-commit-sha>
 docker compose up -d --build
 
 # 4. Verify health
-curl -fsS http://localhost:3000/api/health
+curl -fsS http://localhost:3003/api/health
 ```
 
 ## Viewing Routes
@@ -85,7 +85,7 @@ docker compose logs --tail=50
 # Common issues:
 # - FINANCE_DB_PATH not set → data source will be unavailable but app still starts
 # - OBSIDIAN_VAULT_PATH not set → vault data unavailable but app still starts
-# - Port 3000 already in use → check with `ss -tlnp | grep 3000`
+# - Port 3003 already in use → check with `ss -tlnp | grep 3003`
 ```
 
 ### Data sources unavailable
@@ -98,10 +98,10 @@ The dashboard degrades gracefully when data sources are missing:
 Finance routes (`/api/finance/summary`, `/api/finance/transactions`) require query parameters:
 ```bash
 # Correct:
-curl "http://localhost:3000/api/finance/summary?month=2026-07"
+curl "http://localhost:3003/api/finance/summary?month=2026-07"
 
 # Incorrect (returns 400 VALIDATION_ERROR):
-curl "http://localhost:3000/api/finance/summary"
+curl "http://localhost:3003/api/finance/summary"
 ```
 
 ### Cloudflare Tunnel down
@@ -121,14 +121,14 @@ See [cloudflare-access-handoff.md](cloudflare-access-handoff.md) for tunnel setu
 - **All Docker mounts are read-only.** The container cannot modify source data.
 - **No write APIs exist.** Every route is GET-only and data access is read-only.
 - **No credentials in the image.** Secrets live in `.env.production` (git-ignored).
-- **Localhost-only binding.** The container port is `127.0.0.1:3000` — not reachable from the network without a tunnel.
+- **Localhost-only binding.** The container port is `127.0.0.1:3003` — not reachable from the network without a tunnel.
 
 ## Monitoring
 
 The Docker Compose healthcheck runs every 30s:
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health || exit 1"]
+  test: ["CMD-SHELL", "curl -fsS http://localhost:3003/api/health || exit 1"]
   interval: 30s
   timeout: 5s
   start_period: 15s

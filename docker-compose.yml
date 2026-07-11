@@ -5,15 +5,15 @@ services:
 
     # Only listen on localhost — never reachable from the network
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3003:3003"
 
     restart: unless-stopped
 
     environment:
-      - PORT=3000
+      - PORT=3003
       - NODE_ENV=production
       - APP_TIMEZONE=Asia/Taipei
-      - APP_ORIGIN=http://127.0.0.1:3000
+      - APP_ORIGIN=http://127.0.0.1:3003
       - FINANCE_DB_PATH=/data/finance.db
       - OBSIDIAN_VAULT_PATH=/data/obsidian
 
@@ -32,7 +32,7 @@ services:
         read_only: true
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3003/api/health || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 15s

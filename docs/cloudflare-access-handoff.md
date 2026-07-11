@@ -35,8 +35,8 @@ cloudflared tunnel create wealth-dashboard
 # Route traffic to the local container
 cloudflared tunnel route dns wealth-dashboard wealth.onealweng.com
 
-# Run the tunnel (pointing at the container's 127.0.0.1:3000)
-cloudflared tunnel run --url http://127.0.0.1:3000 wealth-dashboard
+# Run the tunnel (pointing at the container's 127.0.0.1:3003)
+cloudflared tunnel run --url http://127.0.0.1:3003 wealth-dashboard
 ```
 
 Alternatively, in the Cloudflare Zero Trust dashboard:
@@ -47,7 +47,7 @@ Alternatively, in the Cloudflare Zero Trust dashboard:
 4. Under **Public Hostnames**, add:
    - **Subdomain**: `wealth`
    - **Domain**: `onealweng.com`
-   - **Service**: `http://127.0.0.1:3000`
+   - **Service**: `http://127.0.0.1:3003`
 5. Save the tunnel
 
 ## 3. Add Cloudflare Access (the only auth gate)
@@ -79,7 +79,7 @@ After all steps are complete:
 
 ```bash
 # From the Docker host — should succeed (localhost bypasses the tunnel)
-curl -fsS http://127.0.0.1:3000/api/health
+curl -fsS http://127.0.0.1:3003/api/health
 
 # From the public internet — should redirect to the Cloudflare Access login page
 curl -I https://wealth.onealweng.com/

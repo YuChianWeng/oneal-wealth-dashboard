@@ -41,8 +41,8 @@ function isInside(candidate: string, parent: string): boolean {
 const FINANCE_DB_PATH = requiredEnv("FINANCE_DB_PATH");
 const OBSIDIAN_VAULT_PATH = requiredEnv("OBSIDIAN_VAULT_PATH");
 const APP_TIMEZONE = optionalEnv("APP_TIMEZONE", "Asia/Taipei");
-const APP_ORIGIN = optionalEnv("APP_ORIGIN", "http://localhost:3000");
-const PORT = parseInt(optionalEnv("PORT", "3000"), 10);
+const APP_ORIGIN = optionalEnv("APP_ORIGIN", "http://localhost:3003");
+const PORT = parseInt(optionalEnv("PORT", "3003"), 10);
 
 const VAULT_ROOT = "/home/ubuntu/ObsidianVault";
 const DATA_ROOT = "/home/ubuntu/data/finance";
