@@ -49,11 +49,11 @@ USER nodeuser
 
 # Health check (Next.js serves on PORT; curl confirms liveness)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -fsS http://localhost:${PORT:-3000}/api/health || exit 1
+    CMD curl -fsS http://localhost:${PORT:-3003}/api/health || exit 1
 
-EXPOSE 3000
+EXPOSE 3003
 
-ENV PORT=3000
+ENV PORT=3003
 ENV NODE_ENV=production
 
 CMD ["npm", "start"]
