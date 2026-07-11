@@ -50,8 +50,8 @@ describe("config validation", () => {
     expect(config.financeDbPath).toBe(`${DATA_ROOT}/finance.db`);
     expect(config.obsidianVaultPath).toBe(VAULT_ROOT);
     expect(config.timezone).toBe("Asia/Taipei");
-    expect(config.origin).toBe("http://localhost:3000");
-    expect(config.port).toBe(3000);
+    expect(config.origin).toBe("http://localhost:3003");
+    expect(config.port).toBe(3003);
   });
 
   it("parses PORT as a number", async () => {
@@ -70,8 +70,8 @@ describe("config validation", () => {
 
     const { config } = await loadConfig(env);
     expect(config.timezone).toBe("Asia/Taipei");
-    expect(config.origin).toBe("http://localhost:3000");
-    expect(config.port).toBe(3000);
+    expect(config.origin).toBe("http://localhost:3003");
+    expect(config.port).toBe(3003);
   });
 
   it("warns when FINANCE_DB_PATH is outside data root", async () => {
