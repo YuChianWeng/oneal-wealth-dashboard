@@ -1,0 +1,64 @@
+/* ===================================================================
+   Design Tokens — Oneal Wealth Dashboard
+   ===================================================================
+   Token definitions for both dark and light themes.
+
+   Dark theme: warm brown / deep tones (design-originated)
+   Light theme: warm parchment / cream with softer accents (derived)
+
+   Usage: import this file in globals.css or layout.tsx.
+   =================================================================== */
+
+/* ── Dark theme (default) ─────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  /* Background hierarchy */
+  --color-bg: #2d241a;
+  --color-surface: #463a2b;
+  --color-surface-2: #564836;
+
+  /* Borders */
+  --color-border: rgba(255, 244, 230, 0.13);
+  --color-border-2: rgba(255, 244, 230, 0.22);
+
+  /* Text hierarchy */
+  --color-text: #f1ece4;
+  --color-muted: #c6b9a6;
+  --color-faint: #a89c86;
+
+  /* Semantic */
+  --color-accent: #57b394;
+  --color-accent-2: #5f84c6;
+  --color-pos: #5cbf98;
+  --color-neg: #db7f6f;
+  --color-warn: #d9a441;
+
+  /* Micro-surfaces */
+  --color-chip: rgba(255, 244, 230, 0.06);
+
+  color-scheme: dark;
+}
+
+/* ── Light theme ──────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --color-bg: #f4efe7;
+  --color-surface: #fffdfa;
+  --color-surface-2: #efe9df;
+
+  --color-border: rgba(23, 25, 28, 0.09);
+  --color-border-2: rgba(23, 25, 28, 0.16);
+
+  --color-text: #1b1f24;
+  --color-muted: #5d646e;
+  --color-faint: #969ca6;
+
+  --color-accent: #2f8168;
+  --color-accent-2: #3d69b0;
+  --color-pos: #2f9d76;
+  --color-neg: #c85a48;
+  --color-warn: #b3801d;
+
+  --color-chip: rgba(23, 25, 28, 0.04);
+
+  color-scheme: light;
+}

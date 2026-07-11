@@ -1,15 +1,164 @@
+/* ===================================================================
+   Oneal Wealth Dashboard — Global Styles
+   ===================================================================
+   Imports the design tokens and configures Tailwind's base layer
+   with the full colour / spacing / typography system.
+
+   Fonts: IBM Plex Sans, IBM Plex Mono, Noto Sans TC (Google Fonts)
+   =================================================================== */
+
+/* ── Design tokens ─────────────────────────────────────────────────── */
+@import "../styles/tokens.css";
+
+/* ── Tailwind directives ──────────────────────────────────────────── */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light;
+/* ── Base layer (custom properties wired into Tailwind) ───────────── */
+@layer base {
+  /* Let the body inherit the CSS custom property colour scheme */
+  :root {
+    /* Alias design tokens so Tailwind arbitrary values work seamlessly */
+    --ds-bg: var(--color-bg);
+    --ds-surface: var(--color-surface);
+    --ds-surface-2: var(--color-surface-2);
+    --ds-border: var(--color-border);
+    --ds-border-2: var(--color-border-2);
+    --ds-text: var(--color-text);
+    --ds-muted: var(--color-muted);
+    --ds-faint: var(--color-faint);
+    --ds-accent: var(--color-accent);
+    --ds-accent-2: var(--color-accent-2);
+    --ds-pos: var(--color-pos);
+    --ds-neg: var(--color-neg);
+    --ds-warn: var(--color-warn);
+    --ds-chip: var(--color-chip);
+
+    /* Radii (from design measurements) */
+    --radius-sm: 9px;
+    --radius-md: 11px;
+    --radius-lg: 15px;
+    --radius-pill: 20px;
+
+    /* Shadows */
+    --shadow-card:
+      0 1px 1px rgba(0, 0, 0, 0.2), 0 12px 28px -16px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Light-theme shadows are subtler */
+  [data-theme="light"] {
+    --shadow-card:
+      0 1px 1px rgba(0, 0, 0, 0.06), 0 8px 20px -12px rgba(0, 0, 0, 0.12);
+  }
+
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: "IBM Plex Sans", "Noto Sans TC", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  a {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--color-text);
+  }
+
+  /* Selection colour */
+  ::selection {
+    background: var(--color-accent);
+    color: #fff;
+  }
+
+  /* ── Focus ring ──────────────────────────────────────────────── */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ── Scrollbar styling ───────────────────────────────────────── */
+  .scroll-y::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .scroll-y::-webkit-scrollbar-thumb {
+    background: var(--color-border-2);
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .scroll-y::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* ── Monospace utility class ─────────────────────────────────── */
+  .font-mono-dashboard {
+    font-family: "IBM Plex Mono", monospace;
+  }
 }
 
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: #f8fafc;
-  color: #0f172a;
-  font-family: Arial, Helvetica, sans-serif;
+/* ── Component layer (basic reusable patterns) ────────────────────── */
+@layer components {
+  /* Surface card base */
+  .card-dashboard {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Chip / badge base */
+  .chip-dashboard {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    background: var(--color-chip);
+    color: var(--color-muted);
+    font-family: "IBM Plex Mono", monospace;
+  }
+
+  /* Skeleton shimmer */
+  @keyframes dashboard-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  .skeleton-dashboard {
+    background: linear-gradient(
+      90deg,
+      var(--color-surface) 25%,
+      var(--color-surface-2) 37%,
+      var(--color-surface) 63%
+    );
+    background-size: 200% 100%;
+    animation: dashboard-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+  }
 }
