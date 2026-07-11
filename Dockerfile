@@ -41,6 +41,9 @@ COPY --from=builder /app/next.config.ts ./
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 
+# Ensure the unprivileged runtime user can read every application artifact.
+RUN chown -R nodeuser:nodegroup /app
+
 # Create mount-point directories for runtime volumes
 RUN mkdir -p /data/obsidian && touch /data/finance.db && chown -R nodeuser:nodegroup /data
 
