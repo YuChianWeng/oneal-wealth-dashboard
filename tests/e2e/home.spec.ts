@@ -4,9 +4,9 @@ test("renders the dashboard root page", async ({ page }) => {
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: "Oneal Wealth Dashboard" }),
+    page.getByRole("heading", { name: "總覽" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Read-only v1 · no financial records are changed."),
+    page.getByText("最後同步"),
   ).toBeVisible();
 });

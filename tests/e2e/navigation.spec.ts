@@ -10,7 +10,6 @@ const PAGES = [
   { label: "績效比較", url: "/portfolio/performance" },
   { label: "淨資產成長", url: "/growth" },
   { label: "Insights", url: "/insights" },
-  { label: "資料狀態", url: "/settings/data-status" },
 ];
 
 test.describe("desktop sidebar navigation", () => {
