@@ -295,6 +295,25 @@ export function getAccountsList(db: Database.Database): RawAccountRow_full[] {
 }
 
 /**
+ * Distinct YYYY-MM months that have transactions, ordered newest first.
+ *
+ * @param limit  max number of months to return (default 12)
+ */
+export function getAvailableMonths(
+  db: Database.Database,
+  limit = 12,
+): string[] {
+  const sql = `
+    SELECT DISTINCT strftime('%Y-%m', date) AS month
+    FROM transactions
+    ORDER BY month DESC
+    LIMIT ?
+  `;
+  const rows = db.prepare(sql).all(limit) as { month: string }[];
+  return rows.map((r) => r.month);
+}
+
+/**
  * Current loan summary.
  *
  * Returns one row per active loan with computed monthly interest

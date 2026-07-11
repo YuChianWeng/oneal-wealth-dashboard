@@ -139,6 +139,10 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
     grossAmount: fm.grossAmount ?? fm["gross-amount"] ?? undefined,
     feeTax: fm.feeTax ?? fm["fee-tax"] ?? undefined,
     netCashflow: fm.netCashflow ?? fm["net-cashflow"] ?? undefined,
+    reason: fm.reason ?? fm.Reason ?? null,
+    strategy: fm.strategy ?? fm.Strategy ?? null,
+    broker: fm.broker ?? fm.Broker ?? null,
+    status: fm.status ?? fm.Status ?? null,
   };
 
   try {
@@ -307,6 +311,36 @@ export function getTrades(symbol: string): Result<TradeRecord[], SourceError> {
       results.push(parsed.value);
     }
   }
+
+  return ok(results);
+}
+
+/**
+ * List all transaction notes across all symbols.
+ *
+ * Returns an empty array if no transactions are found (not an error).
+ * Results are sorted descending by date (newest first).
+ */
+export function listAllTrades(): Result<TradeRecord[], SourceError> {
+  const files = listNotes(TRANSACTIONS_DIR);
+  if (!files.ok) return files;
+
+  const results: TradeRecord[] = [];
+
+  for (const f of files.value) {
+    const note = readNote(f);
+    if (!note.ok) continue;
+
+    if (!isTransaction(note.value.frontmatter)) continue;
+
+    const parsed = parseTrade(note.value);
+    if (parsed.ok) {
+      results.push(parsed.value);
+    }
+  }
+
+  // Sort descending by date (newest first)
+  results.sort((a, b) => b.date.localeCompare(a.date));
 
   return ok(results);
 }

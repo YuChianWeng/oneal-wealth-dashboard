@@ -49,6 +49,7 @@ import {
   getBalanceSnapshots,
   getAccountsList,
   getLoansSummary,
+  getAvailableMonths,
 } from "./finance-queries";
 import {
   mapMonthlySummary,
@@ -275,5 +276,19 @@ export function loansSummary(): Result<LoanInfo[], SourceError> {
     const rows = getLoansSummary(db);
     const mapped = mapLoanInfos(rows);
     return validateArray(mapped, LoanInfoSchema, "LoanInfo");
+  });
+}
+
+/**
+ * List available months (YYYY-MM) that have transaction data.
+ * Returns at most `limit` months, newest first.
+ */
+export function availableMonths(
+  limit = 12,
+): Result<string[], SourceError> {
+  return catchDbError("availableMonths", () => {
+    const db = getDb();
+    const months = getAvailableMonths(db, limit);
+    return ok(months);
   });
 }

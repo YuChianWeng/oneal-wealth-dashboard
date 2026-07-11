@@ -112,7 +112,7 @@ describe("TradeRecordSchema", () => {
 
   it("rejects extra fields", () => {
     expect(() =>
-      TradeRecordSchema.parse({ ...valid, broker: "Cathay" }),
+      TradeRecordSchema.parse({ ...valid, unknownField: "should-fail" }),
     ).toThrow();
   });
 });

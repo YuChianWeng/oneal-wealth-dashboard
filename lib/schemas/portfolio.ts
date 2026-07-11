@@ -75,6 +75,10 @@ export const TradeRecordSchema = z
     grossAmount: amount().optional(),
     feeTax: amount().optional(),
     netCashflow: amount().optional(),
+    reason: z.string().nullable().optional(),
+    strategy: z.string().nullable().optional(),
+    broker: z.string().nullable().optional(),
+    status: z.string().nullable().optional(),
   })
   .strict();
 
