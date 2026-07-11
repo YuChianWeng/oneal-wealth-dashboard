@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 /**
  * Zod schemas for research view models.

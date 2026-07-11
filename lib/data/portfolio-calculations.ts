@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 /**
  * Portfolio calculations — derived metrics from position data.

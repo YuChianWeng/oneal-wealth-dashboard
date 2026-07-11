@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 /**
  * Typed source-health diagnostics.

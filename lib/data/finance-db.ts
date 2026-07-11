@@ -9,7 +9,7 @@
  * FINANCE_DB_PATH environment variable).
  */
 
-"use server";
+import "server-only";
 
 import Database from "better-sqlite3";
 import { assertServerOnly } from "@/lib/server-only";

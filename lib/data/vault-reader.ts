@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 /**
  * Safe read-only Obsidian vault file reader.

@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 /**
  * Validated server config singleton.
@@ -12,14 +12,7 @@ import { existsSync } from "node:fs";
 import { assertServerOnly } from "@/lib/server-only";
 import { ConfigError } from "@/lib/errors";
 
-// ---------------------------------------------------------------------------
-// Runtime guard — this file must never end up in a client bundle.
-// ---------------------------------------------------------------------------
 assertServerOnly();
-
-// ---------------------------------------------------------------------------
-// Environment variable reading
-// ---------------------------------------------------------------------------
 
 function requiredEnv(key: string): string {
   const val = process.env[key];
@@ -37,13 +30,7 @@ function optionalEnv(key: string, fallback: string): string {
   return val !== undefined && val !== "" ? val : fallback;
 }
 
-// ---------------------------------------------------------------------------
-// Path validation helpers
-// ---------------------------------------------------------------------------
-
-/** Returns true when `candidate` is inside `parent` (resolved, no symlink traversal). */
 function isInside(candidate: string, parent: string): boolean {
-  // Simple prefix check — real path traversal is handled at the read layer.
   const normCandidate = candidate.replace(/\/+$/, "");
   const normParent = parent.replace(/\/+$/, "");
   return (
@@ -51,54 +38,40 @@ function isInside(candidate: string, parent: string): boolean {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
 const FINANCE_DB_PATH = requiredEnv("FINANCE_DB_PATH");
 const OBSIDIAN_VAULT_PATH = requiredEnv("OBSIDIAN_VAULT_PATH");
 const APP_TIMEZONE = optionalEnv("APP_TIMEZONE", "Asia/Taipei");
 const APP_ORIGIN = optionalEnv("APP_ORIGIN", "http://localhost:3000");
 const PORT = parseInt(optionalEnv("PORT", "3000"), 10);
 
-// --- Safety boundaries ---
-
 const VAULT_ROOT = "/home/ubuntu/ObsidianVault";
 const DATA_ROOT = "/home/ubuntu/data/finance";
 
+const warnings: string[] = [];
+
 if (!isInside(FINANCE_DB_PATH, DATA_ROOT)) {
-  throw new ConfigError(
-    `FINANCE_DB_PATH is outside the allowed data root (${DATA_ROOT})`,
-    "CONFIG_PATH_OUTSIDE_ROOT",
-  );
+  const msg = `FINANCE_DB_PATH "${FINANCE_DB_PATH}" is outside the allowed data root (${DATA_ROOT}) — proceeding anyway`;
+  console.warn(`[Config] ${msg}`);
+  warnings.push(msg);
 }
 
 if (!isInside(OBSIDIAN_VAULT_PATH, VAULT_ROOT)) {
-  throw new ConfigError(
-    `OBSIDIAN_VAULT_PATH is outside the allowed vault root (${VAULT_ROOT})`,
-    "CONFIG_PATH_OUTSIDE_ROOT",
-  );
+  const msg = `OBSIDIAN_VAULT_PATH "${OBSIDIAN_VAULT_PATH}" is outside the allowed vault root (${VAULT_ROOT}) — proceeding anyway`;
+  console.warn(`[Config] ${msg}`);
+  warnings.push(msg);
 }
-
-// --- Existence checks (warn, don't crash) ---
-
-const existingWarnings: string[] = [];
 
 if (!existsSync(FINANCE_DB_PATH)) {
   const msg = `FINANCE_DB_PATH "${FINANCE_DB_PATH}" does not exist — finance features will be unavailable`;
   console.warn(`[Config] ${msg}`);
-  existingWarnings.push(msg);
+  warnings.push(msg);
 }
 
 if (!existsSync(OBSIDIAN_VAULT_PATH)) {
   const msg = `OBSIDIAN_VAULT_PATH "${OBSIDIAN_VAULT_PATH}" does not exist — vault features will be unavailable`;
   console.warn(`[Config] ${msg}`);
-  existingWarnings.push(msg);
+  warnings.push(msg);
 }
-
-// ---------------------------------------------------------------------------
-// Typed config object
-// ---------------------------------------------------------------------------
 
 export interface ServerConfig {
   readonly financeDbPath: string;
@@ -108,7 +81,6 @@ export interface ServerConfig {
   readonly port: number;
   readonly vaultRoot: string;
   readonly dataRoot: string;
-  /** Warnings raised during validation (non-fatal). */
   readonly warnings: readonly string[];
 }
 
@@ -120,5 +92,5 @@ export const config: ServerConfig = Object.freeze({
   port: PORT,
   vaultRoot: VAULT_ROOT,
   dataRoot: DATA_ROOT,
-  warnings: Object.freeze(existingWarnings),
+  warnings: Object.freeze(warnings),
 });

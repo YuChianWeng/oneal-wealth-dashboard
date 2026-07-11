@@ -10,7 +10,7 @@
  * JavaScript numbers; these mappers handle that coercion safely.
  */
 
-"use server";
+import "server-only";
 
 import { assertServerOnly } from "@/lib/server-only";
 import type {

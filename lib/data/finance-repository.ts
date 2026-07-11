@@ -14,7 +14,7 @@
  *  5. NEVER throws on data issues
  */
 
-"use server";
+import "server-only";
 
 import { z } from "zod";
 import { assertServerOnly } from "@/lib/server-only";

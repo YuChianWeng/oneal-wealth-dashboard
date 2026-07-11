@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 /**
  * Portfolio repository — read-only access to position, trade, and snapshot data.

@@ -10,7 +10,7 @@
  * investment settlements don't distort living-expense dashboards.
  */
 
-"use server";
+import "server-only";
 
 import type Database from "better-sqlite3";
 import { assertServerOnly } from "@/lib/server-only";

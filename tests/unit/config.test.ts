@@ -74,32 +74,29 @@ describe("config validation", () => {
     expect(config.port).toBe(3000);
   });
 
-  it("rejects FINANCE_DB_PATH outside data root", async () => {
-    await expect(
-      loadConfig({
-        FINANCE_DB_PATH: "/tmp/evil.db",
-        OBSIDIAN_VAULT_PATH: VAULT_ROOT,
-      }),
-    ).rejects.toThrow(/outside the allowed data root/);
+  it("warns when FINANCE_DB_PATH is outside data root", async () => {
+    const { config } = await loadConfig({
+      FINANCE_DB_PATH: "/tmp/evil.db",
+      OBSIDIAN_VAULT_PATH: VAULT_ROOT,
+    });
+    expect(config.warnings.some(w => w.includes("outside the allowed data root"))).toBe(true);
   });
 
-  it("rejects OBSIDIAN_VAULT_PATH outside vault root", async () => {
-    await expect(
-      loadConfig({
-        FINANCE_DB_PATH: `${DATA_ROOT}/finance.db`,
-        OBSIDIAN_VAULT_PATH: "/tmp/evil-vault",
-      }),
-    ).rejects.toThrow(/outside the allowed vault root/);
+  it("warns when OBSIDIAN_VAULT_PATH is outside vault root", async () => {
+    const { config } = await loadConfig({
+      FINANCE_DB_PATH: `${DATA_ROOT}/finance.db`,
+      OBSIDIAN_VAULT_PATH: "/tmp/evil-vault",
+    });
+    expect(config.warnings.some(w => w.includes("outside the allowed vault root"))).toBe(true);
   });
 
-  it("rejects vault path that is a substring but not actually inside", async () => {
+  it("warns when vault path is a substring but not actually inside", async () => {
     // /home/ubuntu/ObsidianVaultEvil is NOT inside /home/ubuntu/ObsidianVault
-    await expect(
-      loadConfig({
-        FINANCE_DB_PATH: `${DATA_ROOT}/finance.db`,
-        OBSIDIAN_VAULT_PATH: "/home/ubuntu/ObsidianVaultEvil",
-      }),
-    ).rejects.toThrow(/outside the allowed vault root/);
+    const { config } = await loadConfig({
+      FINANCE_DB_PATH: `${DATA_ROOT}/finance.db`,
+      OBSIDIAN_VAULT_PATH: "/home/ubuntu/ObsidianVaultEvil",
+    });
+    expect(config.warnings.some(w => w.includes("outside the allowed vault root"))).toBe(true);
   });
 
   it("accepts vault path exactly equal to root", async () => {

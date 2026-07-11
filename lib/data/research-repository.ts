@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 /**
  * Research repository — read-only access to stock research notes.
