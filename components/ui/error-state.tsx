@@ -1,3 +1,5 @@
+"use client";
+
 import type { HTMLAttributes } from "react";
 
 export interface ErrorStateProps extends HTMLAttributes<HTMLDivElement> {

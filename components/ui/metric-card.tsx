@@ -1,3 +1,5 @@
+"use client";
+
 import type { HTMLAttributes } from "react";
 
 export type MetricTrend = "up" | "down" | "neutral";

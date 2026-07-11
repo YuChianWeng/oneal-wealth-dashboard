@@ -47,8 +47,7 @@ describe("formatTWD", () => {
   });
 
   it("handles undefined / null via runtime type (called as TS after coercion)", () => {
-    // The function accepts number but at runtime fakes can still arrive.
-    // Test the internal guard.
+    // The function accepts unknown — guards handle non-number values.
     expect(formatTWD(null as unknown as number)).toBe("NT$—");
     expect(formatTWD(undefined as unknown as number)).toBe("NT$—");
   });
@@ -102,28 +101,24 @@ describe("formatDate", () => {
     // 2026-07-11 14:30 UTC+8 → 2026-07-11 in local Taipei time
     const d = new Date("2026-07-11T06:30:00Z"); // UTC 06:30 = Taipei 14:30
     const result = formatDate(d, "numeric");
-    expect(result).toMatch(/2026/);
-    expect(result).toMatch(/7/);
-    expect(result).toMatch(/11/);
+    expect(result).toBe("2026/7/11");
   });
 
   it("formats a date string in Asia/Taipei locale", () => {
     const result = formatDate("2026-07-11", "numeric");
-    expect(result).toMatch(/2026/);
+    expect(result).toBe("2026/7/11");
   });
 
   it("formats with short month name when format='short'", () => {
     const d = new Date("2026-07-11T06:30:00Z");
     const result = formatDate(d, "short");
-    // Should contain month name and day
-    expect(result.length).toBeGreaterThan(0);
-    expect(result).not.toBe("—");
+    expect(result).toBe("7月11日");
   });
 
   it("defaults to 'numeric' format when not specified", () => {
     const d = new Date("2026-07-11T06:30:00Z");
     const result = formatDate(d);
-    expect(result).toMatch(/\d/);
+    expect(result).toBe("2026/7/11");
   });
 
   it("handles invalid dates", () => {
@@ -141,53 +136,48 @@ describe("formatDate", () => {
 // formatRelativeFreshness
 // ---------------------------------------------------------------------------
 describe("formatRelativeFreshness", () => {
+  const REFERENCE = new Date("2026-07-11T06:30:00Z").getTime(); // fixed reference
+
   it("returns '剛剛' for a date within the last minute", () => {
-    const now = new Date();
-    const recent = new Date(now.getTime() - 30_000); // 30s ago
-    expect(formatRelativeFreshness(recent)).toBe("剛剛");
+    const recent = new Date(REFERENCE - 30_000); // 30s before reference
+    expect(formatRelativeFreshness(recent, REFERENCE)).toBe("剛剛");
   });
 
   it("returns 'X 分鐘前' for minutes ago", () => {
-    const now = new Date();
-    const d = new Date(now.getTime() - 5 * 60_000);
-    const result = formatRelativeFreshness(d);
-    expect(result).toMatch(/分鐘前/);
+    const d = new Date(REFERENCE - 5 * 60_000);
+    const result = formatRelativeFreshness(d, REFERENCE);
+    expect(result).toBe("5 分鐘前");
   });
 
   it("returns 'X 小時前' for hours ago", () => {
-    const now = new Date();
-    const d = new Date(now.getTime() - 3 * 60 * 60_000);
-    const result = formatRelativeFreshness(d);
-    expect(result).toMatch(/小時前/);
+    const d = new Date(REFERENCE - 3 * 60 * 60_000);
+    const result = formatRelativeFreshness(d, REFERENCE);
+    expect(result).toBe("3 小時前");
   });
 
   it("returns 'X 天前' for days ago", () => {
-    const now = new Date();
-    const d = new Date(now.getTime() - 3 * 24 * 60 * 60_000);
-    const result = formatRelativeFreshness(d);
-    expect(result).toMatch(/天前/);
+    const d = new Date(REFERENCE - 3 * 24 * 60 * 60_000);
+    const result = formatRelativeFreshness(d, REFERENCE);
+    expect(result).toBe("3 天前");
   });
 
   it("returns a date string for dates older than 30 days", () => {
-    const d = new Date("2025-01-15");
-    const result = formatRelativeFreshness(d);
-    // Should contain year and month
-    expect(result).toMatch(/\d/);
-    expect(result).not.toBe("—");
+    const d = new Date(REFERENCE - 40 * 24 * 60 * 60_000); // 40 days before
+    const result = formatRelativeFreshness(d, REFERENCE);
+    expect(result).toBe("6月1日"); // 2026-06-01 in zh-TW short format
   });
 
   it("accepts a string date", () => {
-    const now = new Date();
-    const d = new Date(now.getTime() - 2 * 60 * 60_000);
-    const result = formatRelativeFreshness(d.toISOString());
-    expect(result).toMatch(/小時前/);
+    const d = new Date(REFERENCE - 2 * 60 * 60_000);
+    const result = formatRelativeFreshness(d.toISOString(), REFERENCE);
+    expect(result).toBe("2 小時前");
   });
 
   it("handles future dates gracefully", () => {
-    const future = new Date(Date.now() + 24 * 60 * 60_000);
-    const result = formatRelativeFreshness(future);
-    expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(0);
+    const future = new Date(REFERENCE + 24 * 60 * 60_000);
+    const result = formatRelativeFreshness(future, REFERENCE);
+    // Falls back to formatDate for future dates
+    expect(result).toBe("2026/7/12");
   });
 
   it("handles invalid dates", () => {

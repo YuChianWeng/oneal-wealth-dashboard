@@ -61,7 +61,7 @@ function getDateFmt(opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
  *   formatTWD(-1500)     // "−NT$1,500"
  *   formatTWD(NaN)       // "NT$—"
  */
-export function formatTWD(amount: number): string {
+export function formatTWD(amount: unknown): string {
   return safeFmt(
     amount,
     (n) => {
@@ -86,7 +86,7 @@ export function formatTWD(amount: number): string {
  *   formatPercent(-4.1, true)  // "−4.1%"
  *   formatPercent(18.4)        // "18.4%"
  */
-export function formatPercent(value: number, signed?: boolean): string {
+export function formatPercent(value: unknown, signed?: boolean): string {
   return safeFmt(
     value,
     (n) => {
@@ -147,7 +147,10 @@ export function formatDate(
  *   formatRelativeFreshness(twoHoursAgo) // "2 小時前"
  *   formatRelativeFreshness(threeDaysAgo)// "3 天前"
  */
-export function formatRelativeFreshness(date: Date | string): string {
+export function formatRelativeFreshness(
+  date: Date | string,
+  referenceDate?: Date | number,
+): string {
   if (date === null || date === undefined) return "—";
 
   let d: Date;
@@ -159,7 +162,12 @@ export function formatRelativeFreshness(date: Date | string): string {
 
   if (isNaN(d.getTime())) return "—";
 
-  const now = Date.now();
+  const now =
+    referenceDate instanceof Date
+      ? referenceDate.getTime()
+      : typeof referenceDate === "number"
+        ? referenceDate
+        : Date.now();
   const diffMs = now - d.getTime();
 
   // Future dates: fall back to a plain date string.
@@ -189,7 +197,7 @@ export function formatRelativeFreshness(date: Date | string): string {
  *   formatCompact(4286000)  // "NT$4.29M"
  *   formatCompact(-500)     // "−NT$500"
  */
-export function formatCompact(n: number): string {
+export function formatCompact(n: unknown): string {
   return safeFmt(
     n,
     (v) => {
