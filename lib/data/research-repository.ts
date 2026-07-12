@@ -27,11 +27,18 @@ const STOCKS_DIR = "Trading/Stocks";
 
 // Headings we scan for in the note body (case-insensitive)
 const SECTION_HEADINGS: Record<string, RegExp[]> = {
-  thesis: [/^##\s+thesis/i],
-  catalysts: [/^##\s+catalyst/i],
-  risks: [/^##\s+risk/i],
-  invalidation: [/^##\s+invalidat/i],
-  nextStep: [/^##\s+next\s*step/i, /^##\s+action/i],
+  thesis: [/^##\s+.*\bthesis\b/i, /^##\s+.*(一句話結論|投資論點|核心觀點)/i],
+  catalysts: [/^##\s+.*\bcatalyst/i, /^##\s+.*(催化劑|利多|why this stock)/i],
+  risks: [/^##\s+.*\brisk/i, /^##\s+.*風險/i],
+  invalidation: [
+    /^##\s+.*\binvalidat/i,
+    /^##\s+.*(失效條件|反方觀點|no buy if)/i,
+  ],
+  nextStep: [
+    /^##\s+.*\bnext\s*step/i,
+    /^##\s+.*\baction/i,
+    /^##\s+.*(下一步|追蹤事項|行動項目)/i,
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -67,6 +74,14 @@ function extractSection(content: string, headingPatterns: RegExp[]): string {
   }
 
   return sectionLines.join("\n").trim();
+}
+
+function isoDateOrNull(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value !== "string") return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? value.trim() : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,22 +136,31 @@ export function getResearchSummary(
   // Build the raw summary
   const rawSummary = {
     symbol: safeSymbol,
-    name: String(fm.name ?? fm.Name ?? safeSymbol),
+    name: String(fm.name ?? fm.Name ?? fm.ticker ?? safeSymbol),
     status: String(fm.status ?? fm.Status ?? "watchlist"),
     sector: (fm.sector ?? fm.Sector ?? null) as string | null,
     theme: (fm.theme ?? fm.Theme ?? null) as string | null,
-    conviction: (fm.conviction ?? fm.Conviction ?? null) as number | null,
-    thesis: thesis || null,
+    conviction: Number.isFinite(Number(fm.conviction ?? fm.Conviction))
+      ? Number(fm.conviction ?? fm.Conviction)
+      : null,
+    thesis: thesis || String(fm.thesis ?? fm.one_line_thesis ?? "") || null,
     catalysts: catalysts || null,
-    risks: risks || null,
-    invalidation: invalidation || null,
-    nextStep: nextStep || null,
-    sourceChecked: (fm.sourceChecked ?? fm["source-checked"] ?? null) as
-      | string
-      | null,
-    lastUpdated: (fm.lastUpdated ?? fm["last-updated"] ?? fm.date ?? null) as
-      | string
-      | null,
+    risks: risks || String(fm.no_buy_if ?? "") || null,
+    invalidation: invalidation || String(fm.no_buy_if ?? "") || null,
+    nextStep: nextStep || String(fm.next_step ?? "") || null,
+    sourceChecked: isoDateOrNull(
+      fm.sourceChecked ??
+        fm["source-checked"] ??
+        fm.source_checked ??
+        fm.last_review,
+    ),
+    lastUpdated: isoDateOrNull(
+      fm.lastUpdated ??
+        fm["last-updated"] ??
+        fm.last_updated ??
+        fm.last_review ??
+        fm.date,
+    ),
   };
 
   try {

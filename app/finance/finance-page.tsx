@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import {
   PieChart,
   Pie,
@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/chip";
 import { stubNavSections } from "@/lib/nav-sections";
 import { formatTWD, formatPercent } from "@/lib/format";
-import { useMonthlySummary } from "@/lib/hooks/use-finance";
+import { useMonthlySummary, useTransactions } from "@/lib/hooks/use-finance";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -130,9 +130,16 @@ function CategoryPieChart({ data }: { data: ChartDatum[] }) {
 
 export function FinancePage({ initialMonth }: { initialMonth: string }) {
   const month = initialMonth;
-
+  const [transactionPage, setTransactionPage] = useState(1);
   const { data, error, isLoading, isValidating, mutate } =
     useMonthlySummary(month);
+  const {
+    data: transactionData,
+    error: transactionError,
+    isLoading: isTransactionsLoading,
+  } = useTransactions(month, transactionPage, 50);
+
+  useEffect(() => setTransactionPage(1), [month]);
 
   // ── Compute derived values ──────────────────────────────────────────
   const savingsRate = useMemo(() => {
@@ -286,6 +293,128 @@ export function FinancePage({ initialMonth }: { initialMonth: string }) {
             </div>
           </Card>
         )}
+
+        {/* ── Per-transaction ledger ─────────────────────────────── */}
+        <Card
+          header={
+            <div className="flex items-center justify-between">
+              <span className="text-[13.5px] font-semibold">本月收支明細</span>
+              <Chip variant="default">
+                {transactionData ? `${transactionData.total} 筆` : "載入中"}
+              </Chip>
+            </div>
+          }
+        >
+          {isTransactionsLoading ? (
+            <div className="py-8 text-center text-[12px] text-dashboard-faint">
+              載入交易明細…
+            </div>
+          ) : transactionError ? (
+            <div className="py-8 text-center text-[12px] text-dashboard-neg">
+              無法載入交易明細，請稍後重試。
+            </div>
+          ) : !transactionData?.rows.length ? (
+            <div className="py-8 text-center text-[12px] text-dashboard-faint">
+              本月沒有可顯示的收支交易。
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[680px] text-left text-[12px]">
+                  <thead className="border-b border-dashboard-border text-dashboard-faint">
+                    <tr>
+                      <th className="px-2 py-2 font-medium">日期</th>
+                      <th className="px-2 py-2 font-medium">項目</th>
+                      <th className="px-2 py-2 font-medium">分類</th>
+                      <th className="px-2 py-2 font-medium">帳戶</th>
+                      <th className="px-2 py-2 text-right font-medium">金額</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transactionData.rows.map((transaction) => {
+                      const isIncome = transaction.type === "income";
+                      const typeLabel = isIncome
+                        ? "收入"
+                        : transaction.type === "expense"
+                          ? "支出"
+                          : transaction.type === "investment_settlement"
+                            ? "投資結算"
+                            : transaction.type === "loan_interest_payment"
+                              ? "貸款利息"
+                              : "貸款本金";
+                      return (
+                        <tr
+                          key={transaction.id}
+                          className="border-b border-dashboard-border/70 last:border-0 hover:bg-dashboard-chip/50"
+                        >
+                          <td className="whitespace-nowrap px-2 py-3 font-mono text-dashboard-faint">
+                            {transaction.date.slice(0, 10)}
+                          </td>
+                          <td className="max-w-[260px] px-2 py-3 text-dashboard-text">
+                            <div className="truncate">{transaction.item}</div>
+                            {transaction.note && (
+                              <div className="mt-0.5 truncate text-[11px] text-dashboard-faint">
+                                {transaction.note}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-2 py-3">
+                            <Chip variant={isIncome ? "pos" : "default"}>
+                              {typeLabel} · {transaction.category}
+                            </Chip>
+                          </td>
+                          <td className="px-2 py-3 text-dashboard-muted">
+                            {transaction.account}
+                          </td>
+                          <td
+                            className={`whitespace-nowrap px-2 py-3 text-right font-mono font-medium ${isIncome ? "text-dashboard-pos" : "text-dashboard-neg"}`}
+                          >
+                            {isIncome ? "+" : "−"}
+                            {formatTWD(transaction.amount)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {transactionData.total > transactionData.pageSize && (
+                <div className="mt-4 flex items-center justify-between border-t border-dashboard-border pt-3 text-[12px] text-dashboard-muted">
+                  <span>
+                    第 {transactionData.page} /{" "}
+                    {Math.ceil(
+                      transactionData.total / transactionData.pageSize,
+                    )}{" "}
+                    頁
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTransactionPage((page) => Math.max(1, page - 1))
+                      }
+                      disabled={transactionData.page <= 1}
+                      className="rounded-ds-sm border border-dashboard-border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      上一頁
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTransactionPage((page) => page + 1)}
+                      disabled={
+                        transactionData.page * transactionData.pageSize >=
+                        transactionData.total
+                      }
+                      className="rounded-ds-sm border border-dashboard-border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      下一頁
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </Card>
 
         {/* ── Refresh hint ──────────────────────────────────────── */}
         {isValidating && (

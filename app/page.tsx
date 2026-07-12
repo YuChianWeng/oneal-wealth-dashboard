@@ -8,11 +8,15 @@ import type { RangeKey } from "@/components/range/range-selector";
 import { MetricCard, type MetricTrend } from "@/components/ui/metric-card";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
-import { LineChart } from "@/components/overview/line-chart";
+import { NetWorthLineChart } from "@/components/overview/net-worth-line-chart";
 import { DonutChart } from "@/components/overview/donut-chart";
 import { OverviewSkeleton } from "@/components/overview/overview-skeleton";
 import { formatTWD, formatPercent, formatCompact } from "@/lib/format";
-import type { OverviewResponse, InsightSeverity } from "@/lib/analytics";
+import type {
+  OverviewResponse,
+  InsightSeverity,
+  NetWorthSeries,
+} from "@/lib/analytics";
 
 // ---------------------------------------------------------------------------
 // Navigation structure
@@ -59,6 +63,18 @@ const NAV_SECTIONS: NavSection[] = [
 // SWR fetcher
 // ---------------------------------------------------------------------------
 
+interface GrowthData {
+  netWorth: NetWorthSeries | null;
+}
+
+async function fetchGrowth(): Promise<GrowthData> {
+  const res = await fetch("/api/growth");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message ?? "Unknown error");
+  return json.data as GrowthData;
+}
+
 async function fetchOverview(range: RangeKey): Promise<OverviewResponse> {
   const res = await fetch(`/api/overview?range=${range}`);
   if (!res.ok) {
@@ -68,6 +84,21 @@ async function fetchOverview(range: RangeKey): Promise<OverviewResponse> {
   const json = await res.json();
   if (json.error) throw new Error(json.error.message ?? "Unknown error");
   return json.data as OverviewResponse;
+}
+
+function filterNetWorthByRange(
+  points: NonNullable<NetWorthSeries>["points"],
+  range: RangeKey,
+) {
+  if (range === "All" || points.length === 0) return points;
+  const end = new Date(`${points[points.length - 1].date}T00:00:00Z`);
+  const start = new Date(end);
+  const months =
+    range === "1M" ? 1 : range === "3M" ? 3 : range === "1Y" ? 12 : 120;
+  if (range === "YTD") start.setUTCMonth(0, 1);
+  else start.setUTCMonth(start.getUTCMonth() - months);
+  const since = start.toISOString().slice(0, 10);
+  return points.filter((point) => point.date >= since);
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +184,17 @@ export default function Home() {
       revalidateOnReconnect: true,
       dedupingInterval: 30_000,
     },
+  );
+
+  const { data: growth } = useSWR("overview-net-worth", fetchGrowth, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    dedupingInterval: 30_000,
+  });
+
+  const netWorthPoints = useMemo(
+    () => filterNetWorthByRange(growth?.netWorth?.points ?? [], range),
+    [growth, range],
   );
 
   // ── Derived data ──────────────────────────────────────────────────
@@ -299,8 +341,11 @@ export default function Home() {
                   <h2 className="m-0 text-[15px] font-semibold">淨資產成長</h2>
                 </div>
               </div>
-              <LineChart
-                data={data.performanceChart}
+              <NetWorthLineChart
+                points={netWorthPoints.map((point) => ({
+                  date: point.date,
+                  netWorth: point.netWorth,
+                }))}
                 rangeNote={RANGE_NOTES[range]}
               />
             </div>

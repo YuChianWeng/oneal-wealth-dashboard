@@ -32,6 +32,14 @@ interface PerformanceResponse {
   portfolioIndex: number[];
   benchmarkIndex: number[];
   rawMarketValue: number[];
+  audit: {
+    method: "modified-dietz-chain-linked-v1";
+    eventCount: number;
+    inflow: number;
+    outflow: number;
+    netCashFlow: number;
+    events: Array<{ date: string; amount: number; marketValue: number }>;
+  };
 }
 
 type RangeKey = "1M" | "3M" | "6M" | "YTD" | "1Y" | "ALL";
@@ -207,9 +215,7 @@ export default function PerformancePage() {
   const chartData = buildChartData(data);
   const portfolioReturn = computeReturn(data.portfolioIndex);
   const benchmarkReturn =
-    data.benchmarkIndex.length > 0
-      ? computeReturn(data.benchmarkIndex)
-      : null;
+    data.benchmarkIndex.length > 0 ? computeReturn(data.benchmarkIndex) : null;
   const maxDrawdown = computeMaxDrawdown(data.portfolioIndex);
   const winRate = computeWinRate(data.portfolioIndex, data.benchmarkIndex);
 
@@ -218,6 +224,7 @@ export default function PerformancePage() {
     data.rawMarketValue.length > 0
       ? data.rawMarketValue[data.rawMarketValue.length - 1]
       : 0;
+  const audit = data.audit;
 
   return (
     <AppShell navSections={stubNavSections} topbar={{ title: "績效比較" }}>
@@ -268,7 +275,10 @@ export default function PerformancePage() {
       >
         <div className="h-[340px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <LineChart
+              data={chartData}
+              margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+            >
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke="var(--color-border)"
@@ -374,38 +384,98 @@ export default function PerformancePage() {
         </div>
       </Card>
 
-      {/* ── External cash flow audit note ────────────────────────── */}
-      <Card>
-        <div className="flex items-start gap-3">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 18 18"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            className="mt-[2px] flex-shrink-0 text-dashboard-faint"
-          >
-            <circle cx="9" cy="9" r="7" />
-            <path d="M9 5.5v3.5l2 1.2" />
-          </svg>
-          <div>
-            <p className="text-[13px] font-medium text-dashboard-muted">
-              外部現金流審計
-            </p>
-            <p className="mt-1 text-[12px] leading-relaxed text-dashboard-faint">
-              本績效計算已扣除外部現金流（入金 / 出金）的影響。買入新股或增持不會虛增報酬，
-              賣出持股不會虛降報酬。計算採用 Modified Dietz 方法進行期間鏈接。
-              {!hasBenchmark && (
-                <span className="mt-1 block">
-                  TAIEX 基準指數資料尚不可用 — 僅顯示組合自身績效。
-                </span>
-              )}
-            </p>
+      {/* ── External cash flow audit ─────────────────────────────── */}
+      <Card
+        header={
+          <div className="flex items-center justify-between">
+            <h2 className="text-[15px] font-semibold">外部現金流審計</h2>
+            <span className="font-mono text-[11px] text-dashboard-faint">
+              {audit.eventCount} 個事件
+            </span>
           </div>
+        }
+      >
+        <p className="text-[12px] leading-relaxed text-dashboard-faint">
+          本績效計算已扣除外部現金流（入金 /
+          出金）的影響。買入新股或增持不會虛增報酬，賣出持股不會虛降報酬。計算採用
+          Modified Dietz 方法進行期間鏈接。
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <AuditMetric label="外部流入" value={audit.inflow} positive />
+          <AuditMetric label="外部流出" value={audit.outflow} />
+          <AuditMetric
+            label="淨外部現金流"
+            value={audit.netCashFlow}
+            positive={audit.netCashFlow >= 0}
+          />
         </div>
+        {audit.events.length === 0 ? (
+          <p className="mt-4 text-[12px] text-dashboard-faint">
+            本期間未記錄外部現金流。
+          </p>
+        ) : (
+          <div className="mt-4 overflow-x-auto border-t border-dashboard-border pt-3">
+            <table className="w-full min-w-[480px] text-left text-[12px]">
+              <thead className="text-dashboard-faint">
+                <tr>
+                  <th className="py-2 font-medium">日期</th>
+                  <th className="py-2 text-right font-medium">外部現金流</th>
+                  <th className="py-2 text-right font-medium">當日持倉市值</th>
+                </tr>
+              </thead>
+              <tbody>
+                {audit.events.map((event) => (
+                  <tr
+                    key={`${event.date}-${event.amount}`}
+                    className="border-t border-dashboard-border/70"
+                  >
+                    <td className="py-2 font-mono text-dashboard-muted">
+                      {event.date}
+                    </td>
+                    <td
+                      className={`py-2 text-right font-mono ${event.amount >= 0 ? "text-dashboard-pos" : "text-dashboard-neg"}`}
+                    >
+                      {event.amount >= 0 ? "+" : "−"}
+                      {formatTWD(Math.abs(event.amount))}
+                    </td>
+                    <td className="py-2 text-right font-mono text-dashboard-muted">
+                      {formatTWD(event.marketValue)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!hasBenchmark && (
+          <p className="mt-3 text-[12px] text-dashboard-faint">
+            TAIEX 基準指數資料尚不可用 — 僅顯示組合自身績效。
+          </p>
+        )}
       </Card>
     </AppShell>
+  );
+}
+
+function AuditMetric({
+  label,
+  value,
+  positive = false,
+}: {
+  label: string;
+  value: number;
+  positive?: boolean;
+}) {
+  return (
+    <div className="rounded-ds-sm bg-dashboard-chip/50 px-3 py-2">
+      <div className="text-[11px] text-dashboard-faint">{label}</div>
+      <div
+        className={`mt-1 font-mono text-[14px] font-medium ${positive ? "text-dashboard-pos" : value < 0 ? "text-dashboard-neg" : "text-dashboard-muted"}`}
+      >
+        {value > 0 ? "+" : value < 0 ? "−" : ""}
+        {formatTWD(Math.abs(value))}
+      </div>
+    </div>
   );
 }
 

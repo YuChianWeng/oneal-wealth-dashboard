@@ -52,9 +52,35 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const snapshots = snapshotsResult.ok ? snapshotsResult.value : [];
     const chart = computePerformanceChart(snapshots);
+    const cashFlowEvents = snapshots
+      .filter((snapshot) => snapshot.externalCashFlow !== 0)
+      .map((snapshot) => ({
+        date: snapshot.date,
+        amount: snapshot.externalCashFlow,
+        marketValue: snapshot.totalValue,
+      }));
+    const inflow = cashFlowEvents
+      .filter((event) => event.amount > 0)
+      .reduce((sum, event) => sum + event.amount, 0);
+    const outflow = cashFlowEvents
+      .filter((event) => event.amount < 0)
+      .reduce((sum, event) => sum + event.amount, 0);
 
     return NextResponse.json(
-      { version: 1, data: chart },
+      {
+        version: 1,
+        data: {
+          ...chart,
+          audit: {
+            method: "modified-dietz-chain-linked-v1",
+            eventCount: cashFlowEvents.length,
+            inflow,
+            outflow,
+            netCashFlow: inflow + outflow,
+            events: cashFlowEvents,
+          },
+        },
+      },
       {
         status: 200,
         headers: { "Cache-Control": "private, no-store" },
