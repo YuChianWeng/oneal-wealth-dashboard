@@ -20,10 +20,10 @@ export const stubNavSections: NavSection[] = [
   {
     label: "投資 Portfolio",
     items: [
-      { label: "持倉總覽", href: "/portfolio", icon: null, activePrefix: true },
+      { label: "持倉總覽", href: "/portfolio", icon: null },
       {
         label: "個股研究",
-        href: "/portfolio/symbol",
+        href: "/portfolio/research",
         icon: null,
         activePrefix: true,
       },
