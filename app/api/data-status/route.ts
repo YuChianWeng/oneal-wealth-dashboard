@@ -59,13 +59,14 @@ export async function GET(): Promise<NextResponse> {
           financeRecordCount = 0;
         }
 
-        // Count warnings: transactions with empty/incomplete notes or missing categories
+        // Categories are required for correct finance breakdowns. A free-text
+        // note is optional and must not make an otherwise valid transaction
+        // look unhealthy.
         try {
           const warnRow = db
             .prepare(
               `SELECT COUNT(*) AS cnt FROM transactions
-               WHERE (note IS NULL OR note = '')
-                  OR (category_key IS NULL OR category_key = '')`,
+               WHERE category_key IS NULL OR category_key = ''`,
             )
             .get() as { cnt: number } | undefined;
           financeWarningCount = warnRow?.cnt ?? 0;
