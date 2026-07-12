@@ -74,6 +74,15 @@ function firstValidIsoDate(...values: unknown[]): string {
   return "";
 }
 
+function positionNameFromPath(path: string, symbol: string): string {
+  const basename = path.split("/").pop()?.replace(/\.md$/i, "").trim() ?? "";
+  if (basename.toUpperCase().startsWith(symbol.toUpperCase())) {
+    const name = basename.slice(symbol.length).trim();
+    if (name) return name;
+  }
+  return symbol;
+}
+
 /**
  * Convert a raw position note into a validated PositionSummary.
  */
@@ -119,7 +128,13 @@ function parsePosition(note: RawNote): Result<PositionSummary, SourceError> {
 
   const rawPosition = {
     symbol,
-    name: String(fm.name ?? fm.Name ?? symbol),
+    name: String(
+      fm.name ??
+        fm.company_name ??
+        fm.companyName ??
+        fm.Name ??
+        positionNameFromPath(note.path, symbol),
+    ),
     shares,
     avgCost,
     currentPrice,
