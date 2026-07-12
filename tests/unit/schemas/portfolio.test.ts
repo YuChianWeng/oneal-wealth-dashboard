@@ -122,7 +122,12 @@ describe("TradeRecordSchema", () => {
 // ---------------------------------------------------------------------------
 describe("SnapshotPointSchema", () => {
   it("accepts valid data", () => {
-    const data = { date: "2026-07-01", totalValue: 5_000_000 };
+    const data = {
+      date: "2026-07-01",
+      totalValue: 5_000_000,
+      externalCashFlow: 0,
+      benchmarkClose: null,
+    };
     expect(SnapshotPointSchema.parse(data)).toEqual(data);
   });
 });

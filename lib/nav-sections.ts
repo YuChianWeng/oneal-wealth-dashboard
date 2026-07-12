@@ -35,7 +35,7 @@ export const stubNavSections: NavSection[] = [
     label: "成長 · 其他",
     items: [
       { label: "淨資產成長", href: "/growth", icon: null, activePrefix: true },
-      { label: "財務健康", href: "/insights", icon: null },
+      { label: "財務健康", href: "/growth", icon: null },
       { label: "Insights", href: "/insights", icon: null },
     ],
   },

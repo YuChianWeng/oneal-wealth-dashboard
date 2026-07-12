@@ -2,10 +2,13 @@
  * Analytics — performance chart data computation.
  *
  * Builds time-series arrays for portfolio value, benchmark, and raw market
- * value from snapshot data.
+ * value from snapshot data. Portfolio returns are chain-linked after removing
+ * explicitly recorded external cash flows; benchmark values use the snapshot's
+ * recorded benchmark close rather than a synthetic mirror.
  */
 
 import type { SnapshotPoint } from "@/lib/schemas/portfolio";
+import { computePerformanceSeries } from "./portfolio-performance";
 import type { PerformanceChartData } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -21,35 +24,5 @@ import type { PerformanceChartData } from "./types";
 export function computePerformanceChart(
   snapshots: SnapshotPoint[],
 ): PerformanceChartData {
-  if (snapshots.length === 0) {
-    return {
-      dates: [],
-      portfolioIndex: [],
-      benchmarkIndex: [],
-      rawMarketValue: [],
-    };
-  }
-
-  const dates: string[] = [];
-  const rawMarketValue: number[] = [];
-  const portfolioIndex: number[] = [];
-
-  // Normalize to 100 at base
-  const baseValue = snapshots[0].totalValue;
-  const baseIsZero = baseValue === 0;
-
-  for (const snap of snapshots) {
-    dates.push(snap.date);
-    rawMarketValue.push(snap.totalValue);
-    portfolioIndex.push(
-      baseIsZero
-        ? 100
-        : Math.round((snap.totalValue / baseValue) * 100 * 100) / 100,
-    );
-  }
-
-  // Benchmark: mirror the portfolio for now (placeholder)
-  const benchmarkIndex = [...portfolioIndex];
-
-  return { dates, portfolioIndex, benchmarkIndex, rawMarketValue };
+  return computePerformanceSeries(snapshots);
 }

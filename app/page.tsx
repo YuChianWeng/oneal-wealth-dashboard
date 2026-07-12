@@ -11,12 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LineChart } from "@/components/overview/line-chart";
 import { DonutChart } from "@/components/overview/donut-chart";
 import { OverviewSkeleton } from "@/components/overview/overview-skeleton";
-import {
-  formatTWD,
-  formatPercent,
-  formatCompact,
-  formatRelativeFreshness,
-} from "@/lib/format";
+import { formatTWD, formatPercent, formatCompact } from "@/lib/format";
 import type { OverviewResponse, InsightSeverity } from "@/lib/analytics";
 
 // ---------------------------------------------------------------------------
@@ -177,8 +172,6 @@ export default function Home() {
     return data.monthlyCashFlow[data.monthlyCashFlow.length - 1];
   }, [data]);
 
-  const now = useMemo(() => new Date(), []);
-
   // Severity counts for insight summary badges
   const severityCounts = useMemo(() => {
     const counts: Record<InsightSeverity, number> = {
@@ -197,21 +190,14 @@ export default function Home() {
   // ── Topbar subtitle ───────────────────────────────────────────────
 
   const topbarSubtitle = useMemo(() => {
-    const timeStr = now.toLocaleTimeString("zh-TW", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-      timeZone: "Asia/Taipei",
-    });
-    const dateStr = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const sourceCount = data ? 3 : 0;
     const loadingTag = isValidating ? " · 更新中" : "";
-    return `最後同步 · ${dateStr} ${timeStr} · ${sourceCount} 個資料來源${loadingTag}`;
-  }, [now, data, isValidating]);
+    return data
+      ? `資料已載入 · ${sourceCount} 個資料來源${loadingTag}`
+      : "資料載入中…";
+  }, [data, isValidating]);
 
-  const monthBadge = useMemo(() => {
-    return `${now.getFullYear()} 年 ${now.getMonth() + 1} 月`;
-  }, [now]);
+  const monthBadge = "當月";
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -225,8 +211,8 @@ export default function Home() {
         range,
         onRangeChange: setRange,
       }}
-      financeLastSync={data ? formatRelativeFreshness(now) : undefined}
-      priceLastSync={data ? formatRelativeFreshness(now) : undefined}
+      financeLastSync={undefined}
+      priceLastSync={undefined}
       warningCount={severityCounts["action-needed"] + severityCounts["notice"]}
     >
       {/* Loading state */}
@@ -486,7 +472,7 @@ export default function Home() {
               <div className="flex items-center justify-between">
                 <h2 className="m-0 text-[15px] font-semibold">本月金流</h2>
                 <span className="font-mono text-[10.5px] text-dashboard-faint">
-                  {now.getMonth() + 1} 月
+                  當月
                 </span>
               </div>
 
@@ -602,13 +588,13 @@ export default function Home() {
                   財務帳本
                 </span>
                 <span className="font-mono text-[12px] text-dashboard-muted">
-                  {formatRelativeFreshness(now)}
+                  已載入
                 </span>
               </div>
               <div className="flex flex-col gap-[3px]">
                 <span className="text-[11px] text-dashboard-faint">股價</span>
                 <span className="font-mono text-[12px] text-dashboard-muted">
-                  {formatRelativeFreshness(now)}
+                  已載入
                 </span>
               </div>
               <div className="flex flex-col gap-[3px]">

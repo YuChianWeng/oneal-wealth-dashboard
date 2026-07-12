@@ -153,7 +153,7 @@ function isTransaction(fm: Record<string, unknown>): boolean {
  */
 function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
   const fm = note.frontmatter;
-  const symbol = String(fm.symbol ?? fm.Symbol ?? "").trim();
+  const symbol = String(fm.symbol ?? fm.ticker ?? fm.Symbol ?? "").trim();
 
   if (!symbol) {
     return err(
@@ -166,15 +166,21 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
 
   const rawTrade = {
     id: note.path,
-    date: String(fm.tradeDate ?? fm["trade-date"] ?? fm.date ?? ""),
+    date: String(
+      fm.tradeDate ?? fm["trade-date"] ?? fm.trade_date ?? fm.date ?? "",
+    ),
     symbol,
     name: String(fm.name ?? fm.Name ?? symbol),
     side: String(fm.side ?? fm.Side ?? "").toLowerCase(),
     shares: Number(fm.shares ?? fm.Shares ?? 0),
     price: Number(fm.price ?? fm.Price ?? 0),
-    grossAmount: fm.grossAmount ?? fm["gross-amount"] ?? undefined,
-    feeTax: fm.feeTax ?? fm["fee-tax"] ?? undefined,
-    netCashflow: fm.netCashflow ?? fm["net-cashflow"] ?? undefined,
+    grossAmount:
+      numberOrNull(fm.grossAmount ?? fm["gross-amount"] ?? fm.gross_amount) ??
+      undefined,
+    feeTax: numberOrNull(fm.feeTax ?? fm["fee-tax"] ?? fm.fee_tax) ?? undefined,
+    netCashflow:
+      numberOrNull(fm.netCashflow ?? fm["net-cashflow"] ?? fm.net_cashflow) ??
+      undefined,
     reason: fm.reason ?? fm.Reason ?? null,
     strategy: fm.strategy ?? fm.Strategy ?? null,
     broker: fm.broker ?? fm.Broker ?? null,
@@ -215,7 +221,18 @@ function parseSnapshot(note: RawNote): Result<SnapshotPoint, SourceError> {
 
   const rawSnapshot = {
     date,
-    totalValue: Number(fm.totalValue ?? fm["total-value"] ?? 0),
+    totalValue:
+      numberOrNull(fm.totalValue ?? fm["total-value"] ?? fm.market_value) ?? 0,
+    externalCashFlow:
+      numberOrNull(
+        fm.externalCashFlow ??
+          fm["external-cash-flow"] ??
+          fm.external_cash_flow,
+      ) ?? 0,
+    benchmarkClose:
+      numberOrNull(
+        fm.benchmarkClose ?? fm["benchmark-close"] ?? fm.benchmark_close,
+      ) ?? null,
   };
 
   try {

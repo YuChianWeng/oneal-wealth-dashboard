@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   PieChart,
   Pie,
@@ -37,15 +37,6 @@ const CATEGORY_COLORS = [
   "#d48b9b", // rose
   "#8c9e7c", // olive
 ];
-
-/** Get the current month in YYYY-MM format (Asia/Taipei). */
-function getCurrentMonth(): string {
-  const now = new Date();
-  const tw = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
-  const y = tw.getFullYear();
-  const m = String(tw.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
-}
 
 /** Format YYYY-MM to a Chinese month label. */
 function formatMonthLabel(month: string): string {
@@ -87,10 +78,7 @@ interface ChartDatum {
 function CategoryPieChart({ data }: { data: ChartDatum[] }) {
   if (data.length === 0) {
     return (
-      <EmptyState
-        title="尚無支出分類資料"
-        description="本月尚無消費記錄。"
-      />
+      <EmptyState title="尚無支出分類資料" description="本月尚無消費記錄。" />
     );
   }
 
@@ -140,9 +128,8 @@ function CategoryPieChart({ data }: { data: ChartDatum[] }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export function FinancePage() {
-  const currentMonth = getCurrentMonth();
-  const [month] = useState(currentMonth);
+export function FinancePage({ initialMonth }: { initialMonth: string }) {
+  const month = initialMonth;
 
   const { data, error, isLoading, isValidating, mutate } =
     useMonthlySummary(month);
@@ -151,7 +138,7 @@ export function FinancePage() {
   const savingsRate = useMemo(() => {
     if (!data) return null;
     if (data.totalIncome <= 0) return 0;
-    return ((data.netCashflow / data.totalIncome) * 100);
+    return (data.netCashflow / data.totalIncome) * 100;
   }, [data]);
 
   const chartData: ChartDatum[] = useMemo(() => {
@@ -247,9 +234,7 @@ export function FinancePage() {
           <MetricCard
             label="儲蓄率"
             value={
-              savingsRate !== null
-                ? formatPercent(savingsRate, true)
-                : "—%"
+              savingsRate !== null ? formatPercent(savingsRate, true) : "—%"
             }
             trend={savingsRate !== null && savingsRate > 0 ? "up" : "down"}
             description="（收入 − 支出）÷ 收入"

@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import useSWR from "swr";
 import { AppShell } from "@/components/layout/app-shell";
 import { stubNavSections } from "@/lib/nav-sections";
@@ -86,8 +85,6 @@ export default function DataStatusPage() {
     },
   );
 
-  const now = useMemo(() => new Date(), []);
-
   // ── Loading ────────────────────────────────────────────────────────
 
   if (isLoading && !data) {
@@ -135,7 +132,7 @@ export default function DataStatusPage() {
       navSections={stubNavSections}
       topbar={{
         title: "資料狀態",
-        subtitle: `最後檢查 · ${now.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Taipei" })}`,
+        subtitle: "資料來源健康與新鮮度",
       }}
     >
       {/* ── Overall health ────────────────────────────────────────── */}

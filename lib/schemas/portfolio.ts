@@ -92,6 +92,8 @@ export const SnapshotPointSchema = z
   .object({
     date: dateStr(),
     totalValue: amount(),
+    externalCashFlow: amount().default(0),
+    benchmarkClose: amount().nullable().optional(),
   })
   .strict();
 
