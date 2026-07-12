@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Chip } from "@/components/ui/chip";
+import { ResearchMarkdown } from "@/components/portfolio/research-markdown";
 import { useApi } from "@/lib/hooks/use-api";
 import { formatTWD, formatPercent, formatDate } from "@/lib/format";
 import Link from "next/link";
@@ -59,10 +60,7 @@ export default function StockDetailPage({
   if (error || !data) {
     const is404 = error?.message?.includes("not found");
     return (
-      <AppShell
-        navSections={stubNavSections}
-        topbar={{ title: symbol }}
-      >
+      <AppShell navSections={stubNavSections} topbar={{ title: symbol }}>
         {is404 ? (
           <EmptyState
             title="找不到此股票"
@@ -116,10 +114,7 @@ export default function StockDetailPage({
               : "NT$—"
           }
         />
-        <MetricCard
-          label="持倉市值"
-          value={formatTWD(mv)}
-        />
+        <MetricCard label="持倉市值" value={formatTWD(mv)} />
         <MetricCard
           label="成本基礎"
           value={formatTWD(costBasis)}
@@ -128,14 +123,22 @@ export default function StockDetailPage({
         <MetricCard
           label="未實現損益"
           value={formatTWD(pnl)}
-          trend={pnlVariant === "positive" ? "up" : pnlVariant === "negative" ? "down" : "neutral"}
+          trend={
+            pnlVariant === "positive"
+              ? "up"
+              : pnlVariant === "negative"
+                ? "down"
+                : "neutral"
+          }
           trendLabel={formatPercent(pnlPct, true)}
         />
       </div>
 
       {/* ── Price vs cost bar ─────────────────────────────────────── */}
       {position.currentPrice != null && (
-        <Card header={<h2 className="text-[15px] font-semibold">價格 vs 成本</h2>}>
+        <Card
+          header={<h2 className="text-[15px] font-semibold">價格 vs 成本</h2>}
+        >
           <div className="space-y-3">
             <div>
               <div className="mb-1 flex items-center justify-between text-[12.5px]">
@@ -253,7 +256,9 @@ export default function StockDetailPage({
             {research.sector && (
               <div className="flex gap-2 pt-1">
                 <Chip variant="default">{research.sector}</Chip>
-                {research.theme && <Chip variant="accent">{research.theme}</Chip>}
+                {research.theme && (
+                  <Chip variant="accent">{research.theme}</Chip>
+                )}
               </div>
             )}
           </div>
@@ -283,9 +288,7 @@ export default function StockDetailPage({
                 key={trade.id}
                 className="flex items-center gap-3 rounded-ds-sm border border-dashboard-border px-3 py-[10px]"
               >
-                <Chip
-                  variant={trade.side === "buy" ? "pos" : "neg"}
-                >
+                <Chip variant={trade.side === "buy" ? "pos" : "neg"}>
                   {trade.side === "buy" ? "買入" : "賣出"}
                 </Chip>
                 <span className="font-mono text-[11.5px] text-dashboard-faint">
@@ -392,13 +395,13 @@ function Section({
           : "text-dashboard-muted";
 
   return (
-    <div className={`rounded-ds-sm border-l-[3px] ${borderColor} bg-dashboard-chip/30 px-3 py-2`}>
+    <div
+      className={`rounded-ds-sm border-l-[3px] ${borderColor} bg-dashboard-chip/30 px-3 py-2`}
+    >
       <div className={`mb-1 text-[11.5px] font-semibold ${labelColor}`}>
         {label}
       </div>
-      <p className="text-[13px] leading-relaxed text-dashboard-text whitespace-pre-wrap">
-        {content}
-      </p>
+      <ResearchMarkdown content={content} />
     </div>
   );
 }
