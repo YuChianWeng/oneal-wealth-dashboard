@@ -28,10 +28,13 @@ let _db: Database.Database | null = null;
  *
  * The connection is created once and reused for the lifetime of the
  * Node.js process. It always opens with:
- *   - `readonly: true`     — no INSERT / UPDATE / DELETE / CREATE possible
+ *   - read-only connection — no INSERT / UPDATE / DELETE / CREATE possible
  *   - `fileMustExist: true` — fail fast if the DB path is missing
- *   - WAL journal mode enabled
  *   - foreign_keys pragma enabled
+ *
+ * SQLite discovers an existing WAL journal automatically. A readonly reader
+ * must not execute `journal_mode = WAL`, because that is a journal-setting
+ * operation and can transiently fail while the writer creates sidecar files.
  *
  * @throws {ConfigError} if the DB file does not exist at the configured path.
  * @throws {SourceError} if the DB cannot be opened for another reason.
@@ -47,8 +50,9 @@ export function getDb(): Database.Database {
       fileMustExist: true,
     });
 
-    // Enable WAL for concurrent read performance
-    _db.pragma("journal_mode = WAL");
+    // Do not set journal_mode here. SQLite reads an existing WAL journal
+    // automatically, while changing journal mode is incompatible with a
+    // read-only dashboard mount.
 
     // Enforce foreign key constraints during reads (defence-in-depth)
     _db.pragma("foreign_keys = ON");
