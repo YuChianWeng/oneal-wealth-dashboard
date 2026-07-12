@@ -157,7 +157,7 @@ function InsurancePolicyCard({ policy }: { policy: InsurancePolicyInfo }) {
           value={formatTWD(policy.scheduledSurrenderValue)}
         />
         <PolicyMetric
-          label="保單借款本息"
+          label="已扣除的借款本息"
           value={`−${formatTWD(policy.totalLoanDeduction)}`}
           tone="negative"
         />
@@ -188,7 +188,7 @@ function InsurancePolicyCard({ policy }: { policy: InsurancePolicyInfo }) {
         </div>
       </div>
       <p className="mt-3 text-[11px] leading-relaxed text-dashboard-faint">
-        未付利息超過一年才併入本金；表定解約價值以保單條款／當期通知為準，本頁估值狀態：
+        未付利息超過一年才併入本金；借款本息已扣在可解約淨值中，不再納入總負債以避免重複計算。本頁估值狀態：
         {policy.valuationStatus}。
       </p>
     </Card>
