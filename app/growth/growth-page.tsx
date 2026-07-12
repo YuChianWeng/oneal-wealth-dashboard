@@ -52,6 +52,179 @@ function GrowthTooltip({
   );
 }
 
+function LoanInvestmentTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ name: string; value: number; color: string }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-ds-md border border-dashboard-border bg-dashboard-surface px-3 py-2 shadow-ds-card">
+      <p className="mb-1 text-[11px] text-dashboard-faint">{label}</p>
+      {payload.map((entry) => (
+        <p
+          key={entry.name}
+          className="text-[12px] font-medium"
+          style={{ color: entry.color }}
+        >
+          {entry.name} {formatPercent(entry.value, true)}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function LoanInvestmentPerformanceCard({
+  performance,
+}: {
+  performance: NonNullable<GrowthResponse["loanInvestment"]>;
+}) {
+  const points = performance.points;
+  const latest = points[points.length - 1];
+  const benchmarkReturn = latest?.taiexReturnPct ?? null;
+  const excessReturn =
+    benchmarkReturn === null
+      ? null
+      : latest.strategyReturnPct - benchmarkReturn;
+  const chartData = points.map((point) => ({
+    ...point,
+    label: formatShortDate(point.date),
+    strategy: point.strategyReturnPct,
+    taiex: point.taiexReturnPct,
+  }));
+
+  return (
+    <Card
+      header={
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-[15px] font-semibold">
+              保單借款投資績效 vs 大盤
+            </h2>
+            <p className="mt-0.5 text-[11px] text-dashboard-faint">
+              {performance.strategyLabel} · 起始本金{" "}
+              {formatTWD(performance.initialPrincipal)}
+            </p>
+          </div>
+          <Chip variant="accent">起始 {performance.startDate}</Chip>
+        </div>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <PolicyPerformanceMetric
+          label="目前策略資產"
+          value={formatTWD(latest.strategyValue)}
+        />
+        <PolicyPerformanceMetric
+          label="策略累積報酬"
+          value={formatPercent(latest.strategyReturnPct, true)}
+          tone={latest.strategyReturnPct >= 0 ? "positive" : "negative"}
+        />
+        <PolicyPerformanceMetric
+          label="TAIEX 同期報酬"
+          value={
+            benchmarkReturn === null
+              ? "—"
+              : formatPercent(benchmarkReturn, true)
+          }
+          tone="neutral"
+        />
+        <PolicyPerformanceMetric
+          label="相對大盤"
+          value={
+            excessReturn === null ? "—" : formatPercent(excessReturn, true)
+          }
+          tone={
+            excessReturn !== null && excessReturn >= 0 ? "positive" : "negative"
+          }
+        />
+      </div>
+      <div className="mt-4 h-[300px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <RechartsLine
+            data={chartData}
+            margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="var(--color-border)"
+              strokeOpacity={0.4}
+            />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 10, fill: "var(--color-faint)" }}
+              tickLine={false}
+              axisLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tick={{ fontSize: 10, fill: "var(--color-faint)" }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v: number) => `${v.toFixed(0)}%`}
+            />
+            <Tooltip content={<LoanInvestmentTooltip />} />
+            <Line
+              type="monotone"
+              dataKey="strategy"
+              name="借款投資池"
+              stroke="var(--color-accent)"
+              strokeWidth={2.5}
+              dot={{ r: 3 }}
+              activeDot={{ r: 4, strokeWidth: 0 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="taiex"
+              name="TAIEX"
+              stroke="var(--color-warn)"
+              strokeWidth={2}
+              strokeDasharray="7 5"
+              dot={false}
+            />
+          </RechartsLine>
+        </ResponsiveContainer>
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-dashboard-faint">
+        2026-06-20 以 NT$200,000 建立起始點；正式帳戶觀測從 2026-06-21
+        起。策略資產 = 國泰投資交割戶 + 股票市值；TAIEX
+        使用每個觀測日當日或之前最近的可用收盤價。
+      </p>
+    </Card>
+  );
+}
+
+function PolicyPerformanceMetric({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "positive" | "negative" | "neutral";
+}) {
+  const color =
+    tone === "positive"
+      ? "text-dashboard-pos"
+      : tone === "negative"
+        ? "text-dashboard-neg"
+        : "text-dashboard-text";
+  return (
+    <div className="rounded-ds-sm bg-dashboard-chip/40 p-3">
+      <div className="text-[10.5px] text-dashboard-faint">{label}</div>
+      <div
+        className={`mt-1 font-mono-dashboard text-[16px] font-semibold ${color}`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Net worth chart data builder
 // ---------------------------------------------------------------------------
@@ -334,6 +507,10 @@ export default function GrowthPage() {
           </div>
         )}
       </Card>
+
+      {data?.loanInvestment && (
+        <LoanInvestmentPerformanceCard performance={data.loanInvestment} />
+      )}
 
       {/* ── Financial health grid + milestones ──────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

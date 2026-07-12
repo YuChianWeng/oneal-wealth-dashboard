@@ -8,6 +8,10 @@ import {
   accountsList as repoAccountsList,
 } from "@/lib/data/finance-repository";
 import { listOpenPositions } from "@/lib/data/portfolio-repository";
+import {
+  loanInvestmentPerformance,
+  type LoanInvestmentPerformance,
+} from "@/lib/data/loan-investment-repository";
 import { computeNetWorth } from "@/lib/analytics/net-worth";
 import {
   emergencyFundMonths,
@@ -34,6 +38,7 @@ export interface GrowthResponse {
     } | null;
   };
   milestones: Milestone[];
+  loanInvestment: LoanInvestmentPerformance | null;
 }
 
 export interface Milestone {
@@ -158,6 +163,10 @@ export async function GET(): Promise<NextResponse> {
     // ── Milestones ───────────────────────────────────────────────────
 
     const milestones = buildMilestones(netWorth);
+    const loanInvestmentResult = loanInvestmentPerformance();
+    const loanInvestment = loanInvestmentResult.ok
+      ? loanInvestmentResult.value
+      : null;
 
     // ── Response ─────────────────────────────────────────────────────
 
@@ -176,6 +185,7 @@ export async function GET(): Promise<NextResponse> {
           : null,
       },
       milestones,
+      loanInvestment,
     };
 
     return NextResponse.json(
