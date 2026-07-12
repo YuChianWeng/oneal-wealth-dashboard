@@ -44,8 +44,9 @@ COPY --from=builder /app/public ./public
 # Ensure the unprivileged runtime user can read every application artifact.
 RUN chown -R nodeuser:nodegroup /app
 
-# Create mount-point directories for runtime volumes
-RUN mkdir -p /data/obsidian && touch /data/finance.db && chown -R nodeuser:nodegroup /data
+# Create mount-point directories for runtime volumes.
+# Finance is a directory mount so SQLite WAL/SHM sidecars remain visible.
+RUN mkdir -p /data/finance /data/obsidian && chown -R nodeuser:nodegroup /data
 
 # Switch to non‑root user
 USER nodeuser

@@ -14,7 +14,7 @@ services:
       - NODE_ENV=production
       - APP_TIMEZONE=Asia/Taipei
       - APP_ORIGIN=http://127.0.0.1:3003
-      - FINANCE_DB_PATH=/data/finance.db
+      - FINANCE_DB_PATH=/data/finance/finance.db
       - OBSIDIAN_VAULT_PATH=/data/obsidian
 
     env_file:
@@ -23,8 +23,10 @@ services:
     volumes:
       # Read‑only mounts for source data — the dashboard never writes them
       - type: bind
-        source: ${FINANCE_DB_PATH:-/dev/null}
-        target: /data/finance.db
+        # Mount the directory, not just finance.db: SQLite WAL readers also
+        # require finance.db-wal and finance.db-shm to see recent commits.
+        source: ${FINANCE_DATA_DIR:-/dev/null}
+        target: /data/finance
         read_only: true
       - type: bind
         source: ${OBSIDIAN_VAULT_PATH:-/dev/null}
