@@ -10,7 +10,11 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { stubNavSections } from "@/lib/nav-sections";
 import { formatTWD } from "@/lib/format";
 import { useAccounts } from "@/lib/hooks/use-finance";
-import type { AccountInfo, LoanInfo } from "@/lib/schemas/finance";
+import type {
+  AccountInfo,
+  InsurancePolicyInfo,
+  LoanInfo,
+} from "@/lib/schemas/finance";
 
 // ---------------------------------------------------------------------------
 // Loading skeleton
@@ -131,6 +135,95 @@ function LoanCard({ loan }: { loan: LoanInfo }) {
   );
 }
 
+function InsurancePolicyCard({ policy }: { policy: InsurancePolicyInfo }) {
+  const semiannualInterest = (policy.loanPrincipal * policy.loanRate) / 2;
+  return (
+    <Card
+      header={
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-[15px] font-semibold">{policy.name}</h2>
+            <p className="mt-0.5 text-[11px] text-dashboard-faint">
+              {policy.policyType} · 估值日 {policy.valuationDate}
+            </p>
+          </div>
+          <Chip variant="accent">可隨時解約</Chip>
+        </div>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <PolicyMetric
+          label="表定解約價值"
+          value={formatTWD(policy.scheduledSurrenderValue)}
+        />
+        <PolicyMetric
+          label="保單借款本息"
+          value={`−${formatTWD(policy.totalLoanDeduction)}`}
+          tone="negative"
+        />
+        <PolicyMetric
+          label="可解約淨值"
+          value={formatTWD(policy.netSurrenderValue)}
+          tone="positive"
+        />
+        <PolicyMetric
+          label="借款成數"
+          value={`${policy.ltv.toFixed(2)}%`}
+          tone="warning"
+        />
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-3 border-t border-dashboard-border pt-3 text-[12px] text-dashboard-muted md:grid-cols-3">
+        <div>
+          本金 {formatTWD(policy.loanPrincipal)} ＋ 已計利息{" "}
+          {formatTWD(policy.accruedInterest)} ＋ 日計調整{" "}
+          {formatTWD(policy.estimatedDailyAdjustment)}
+        </div>
+        <div>
+          借款利率 {(policy.loanRate * 100).toFixed(2)}% · 預估半年利息{" "}
+          {formatTWD(semiannualInterest)}
+        </div>
+        <div>
+          下次利息日 {policy.nextInterestDue} · 解約金成長規則{" "}
+          {(policy.surrenderGrowthRate * 100).toFixed(2)}%
+        </div>
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-dashboard-faint">
+        未付利息超過一年才併入本金；表定解約價值以保單條款／當期通知為準，本頁估值狀態：
+        {policy.valuationStatus}。
+      </p>
+    </Card>
+  );
+}
+
+function PolicyMetric({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "positive" | "negative" | "warning" | "neutral";
+}) {
+  const color =
+    tone === "positive"
+      ? "text-dashboard-pos"
+      : tone === "negative"
+        ? "text-dashboard-neg"
+        : tone === "warning"
+          ? "text-dashboard-warn"
+          : "text-dashboard-text";
+  return (
+    <div className="rounded-ds-sm bg-dashboard-chip/40 p-3">
+      <div className="text-[10.5px] text-dashboard-faint">{label}</div>
+      <div
+        className={`mt-1 font-mono-dashboard text-[16px] font-semibold ${color}`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -165,6 +258,7 @@ export function AccountsPage() {
 
   const accounts = data?.accounts ?? [];
   const loans = data?.loans ?? [];
+  const insurancePolicy = data?.insurancePolicy;
 
   if (accounts.length === 0 && loans.length === 0) {
     return (
@@ -224,6 +318,9 @@ export function AccountsPage() {
             </div>
           </div>
         </div>
+
+        {/* Policy asset and loan */}
+        {insurancePolicy && <InsurancePolicyCard policy={insurancePolicy} />}
 
         {/* Account grid */}
         <Card

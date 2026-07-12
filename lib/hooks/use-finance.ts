@@ -7,6 +7,7 @@ import type {
   TransactionRow,
   AccountInfo,
   LoanInfo,
+  InsurancePolicyInfo,
 } from "@/lib/schemas/finance";
 
 // ---------------------------------------------------------------------------
@@ -23,6 +24,7 @@ export interface PaginatedTransactions {
 export interface AccountsData {
   accounts: AccountInfo[];
   loans: LoanInfo[];
+  insurancePolicy: InsurancePolicyInfo;
 }
 
 export interface ReviewsData {
@@ -56,7 +58,11 @@ export function useTransactions(
   category?: string,
   account?: string,
 ) {
-  const params = new URLSearchParams({ month, page: String(page), pageSize: String(pageSize) });
+  const params = new URLSearchParams({
+    month,
+    page: String(page),
+    pageSize: String(pageSize),
+  });
   if (category) params.set("category", category);
   if (account) params.set("account", account);
 

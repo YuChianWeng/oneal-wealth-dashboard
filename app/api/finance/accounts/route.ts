@@ -3,6 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { toSafeResponse } from "@/lib/errors";
 import { accountsList, loansSummary } from "@/lib/data/finance-repository";
+import { savingsPolicySummary } from "@/lib/data/insurance-policy-repository";
 
 /**
  * GET /api/finance/accounts
@@ -14,6 +15,7 @@ export async function GET(): Promise<NextResponse> {
   try {
     const accountsResult = accountsList();
     const loansResult = loansSummary();
+    const policyResult = savingsPolicySummary();
 
     if (!accountsResult.ok) {
       const safe = toSafeResponse(accountsResult.error);
@@ -37,12 +39,24 @@ export async function GET(): Promise<NextResponse> {
       );
     }
 
+    if (!policyResult.ok) {
+      const safe = toSafeResponse(policyResult.error);
+      return NextResponse.json(
+        { version: 1, error: safe },
+        {
+          status: 500,
+          headers: { "Cache-Control": "private, no-store" },
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         version: 1,
         data: {
           accounts: accountsResult.value,
           loans: loansResult.value,
+          insurancePolicy: policyResult.value,
         },
       },
       {

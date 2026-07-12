@@ -122,6 +122,32 @@ export const LoanInfoSchema = z
 export type LoanInfo = z.infer<typeof LoanInfoSchema>;
 
 // ---------------------------------------------------------------------------
+// Insurance policy info
+// ---------------------------------------------------------------------------
+
+export const InsurancePolicyInfoSchema = z
+  .object({
+    name: z.string().min(1),
+    policyType: z.string().min(1),
+    valuationDate: z.string().date(),
+    scheduledSurrenderValue: amount(),
+    netSurrenderValue: amount(),
+    loanPrincipal: amount(),
+    accruedInterest: amount(),
+    estimatedDailyAdjustment: amount(),
+    totalLoanDeduction: amount(),
+    loanRate: z.number().finite().nonnegative(),
+    surrenderGrowthRate: z.number().finite().nonnegative(),
+    ltv: z.number().finite().nonnegative(),
+    nextInterestDue: z.string().date(),
+    interestCapitalizationRule: z.string().min(1),
+    valuationStatus: z.string().min(1),
+  })
+  .strict();
+
+export type InsurancePolicyInfo = z.infer<typeof InsurancePolicyInfoSchema>;
+
+// ---------------------------------------------------------------------------
 // Balance snapshot
 // ---------------------------------------------------------------------------
 
