@@ -40,6 +40,7 @@ const WHITELISTED_ROOTS: readonly string[] = [
   "Trading/Portfolio/Positions",
   "Trading/Portfolio/Transactions",
   "Trading/Portfolio/Snapshots",
+  "Finance/Insurance/Loan Investment Snapshots",
   "Trading/Stocks",
 ] as const;
 

@@ -3,22 +3,11 @@ import "server-only";
 import { assertServerOnly } from "@/lib/server-only";
 import { SourceError } from "@/lib/errors";
 import { err, ok, type Result } from "@/lib/result";
-import { balanceSnapshots } from "@/lib/data/finance-repository";
-import { getDailySnapshots } from "@/lib/data/portfolio-repository";
+import { listNotes, readNote } from "@/lib/data/vault-reader";
 
 assertServerOnly();
 
-/**
- * The user's approved loan-investment tracking convention. The seed point is
- * intentionally separate from the first observed account snapshot: it records
- * the principal deployed before the 2026-06-21 snapshot, rather than fabricating
- * an earlier cash/brokerage allocation.
- */
-const START_DATE = "2026-06-20";
-const FIRST_OBSERVATION_DATE = "2026-06-21";
-const INITIAL_PRINCIPAL = 200_000;
-const CASH_ACCOUNT = "CathayBank";
-const BROKERAGE_ACCOUNT = "Brokerage";
+const SNAPSHOTS_DIR = "Finance/Insurance/Loan Investment Snapshots";
 
 export interface LoanInvestmentPoint {
   date: string;
@@ -28,6 +17,7 @@ export interface LoanInvestmentPoint {
   taiexReturnPct: number | null;
   taiexSnapshotDate: string | null;
   isSeed: boolean;
+  cashAsOfDate: string | null;
 }
 
 export interface LoanInvestmentPerformance {
@@ -39,59 +29,84 @@ export interface LoanInvestmentPerformance {
   points: LoanInvestmentPoint[];
 }
 
-function latestBenchmarkAtOrBefore(
-  snapshots: Array<{ date: string; benchmarkClose: number | null }>,
-  date: string,
-) {
-  let latest: { date: string; benchmarkClose: number | null } | null = null;
-  for (const snapshot of snapshots) {
-    if (
-      snapshot.date <= date &&
-      snapshot.benchmarkClose &&
-      snapshot.benchmarkClose > 0
-    ) {
-      latest = snapshot;
-    }
-  }
-  return latest;
+function numberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isoDate(value: unknown): string | null {
+  const date = String(value ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 }
 
 /**
- * Calculates the performance of the NT$200,000 policy-loan investment pool.
- * It is deliberately separate from whole-portfolio TWR: this pool includes
- * Cathay settlement cash plus brokerage market value, with a fixed principal
- * seed and no fabricated historical decomposition before 2026-06-21.
+ * Reads the single auditable daily loan-investment snapshot source written by
+ * daily_growth_snapshots.py. Finance/Entries remains a real account-balance
+ * source and is intentionally not rewritten by the market-close cron.
  */
 export function loanInvestmentPerformance(): Result<
   LoanInvestmentPerformance,
   SourceError
 > {
-  const cashResult = balanceSnapshots(CASH_ACCOUNT, FIRST_OBSERVATION_DATE);
-  if (!cashResult.ok) return cashResult;
-  const brokerageResult = balanceSnapshots(
-    BROKERAGE_ACCOUNT,
-    FIRST_OBSERVATION_DATE,
-  );
-  if (!brokerageResult.ok) return brokerageResult;
-  const portfolioResult = getDailySnapshots("2026-06-01");
-  if (!portfolioResult.ok) return portfolioResult;
+  const filesResult = listNotes(SNAPSHOTS_DIR);
+  if (!filesResult.ok) return filesResult;
 
-  const cashByDate = new Map(
-    cashResult.value.map((point) => [point.date, point.netWorth]),
-  );
-  const brokerageByDate = new Map(
-    brokerageResult.value.map((point) => [point.date, point.netWorth]),
-  );
-  const benchmarkSnapshots = portfolioResult.value.map((snapshot) => ({
-    date: snapshot.date,
-    benchmarkClose: snapshot.benchmarkClose ?? null,
-  }));
-  const baseBenchmark = latestBenchmarkAtOrBefore(
-    benchmarkSnapshots,
-    START_DATE,
-  );
+  const raw = [] as Array<{
+    date: string;
+    principal: number;
+    strategyValue: number;
+    strategyReturnPct: number;
+    taiexClose: number | null;
+    benchmarkDate: string | null;
+    isSeed: boolean;
+    cashAsOfDate: string | null;
+  }>;
 
-  if (!baseBenchmark?.benchmarkClose) {
+  for (const path of filesResult.value) {
+    const note = readNote(path);
+    if (
+      !note.ok ||
+      String(note.value.frontmatter.type) !== "loan-investment-snapshot"
+    )
+      continue;
+    const fm = note.value.frontmatter;
+    const date = isoDate(fm.date);
+    const principal = numberOrNull(fm.initial_principal);
+    const strategyValue = numberOrNull(fm.strategy_value);
+    const strategyReturnPct = numberOrNull(fm.strategy_return_pct);
+    if (
+      !date ||
+      !principal ||
+      strategyValue === null ||
+      strategyReturnPct === null
+    )
+      continue;
+    raw.push({
+      date,
+      principal,
+      strategyValue,
+      strategyReturnPct,
+      taiexClose: numberOrNull(fm.benchmark_close),
+      benchmarkDate: isoDate(fm.benchmark_snapshot_date),
+      isSeed: fm.is_seed === true || fm.is_seed === "true",
+      cashAsOfDate: isoDate(fm.cash_as_of_date),
+    });
+  }
+
+  raw.sort((a, b) => a.date.localeCompare(b.date));
+  if (!raw.length) {
+    return err(
+      new SourceError(
+        "Loan-investment snapshots are unavailable",
+        "SOURCE_NOT_FOUND",
+      ),
+    );
+  }
+
+  const seed = raw.find((point) => point.isSeed) ?? raw[0];
+  const baseTaiexClose = seed.taiexClose;
+  if (!baseTaiexClose || baseTaiexClose <= 0) {
     return err(
       new SourceError(
         "Loan-investment benchmark is unavailable",
@@ -100,43 +115,25 @@ export function loanInvestmentPerformance(): Result<
     );
   }
 
-  const observedDates = [...cashByDate.keys()]
-    .filter((date) => brokerageByDate.has(date))
-    .sort();
+  const points: LoanInvestmentPoint[] = raw.map((point) => ({
+    date: point.date,
+    strategyValue: point.strategyValue,
+    strategyReturnPct: point.strategyReturnPct,
+    taiexClose: point.taiexClose,
+    taiexReturnPct: point.taiexClose
+      ? (point.taiexClose / baseTaiexClose - 1) * 100
+      : null,
+    taiexSnapshotDate: point.benchmarkDate,
+    isSeed: point.isSeed,
+    cashAsOfDate: point.cashAsOfDate,
+  }));
 
-  const points: LoanInvestmentPoint[] = [
-    {
-      date: START_DATE,
-      strategyValue: INITIAL_PRINCIPAL,
-      strategyReturnPct: 0,
-      taiexClose: baseBenchmark.benchmarkClose,
-      taiexReturnPct: 0,
-      taiexSnapshotDate: baseBenchmark.date,
-      isSeed: true,
-    },
-  ];
-
-  for (const date of observedDates) {
-    const strategyValue =
-      (cashByDate.get(date) ?? 0) + (brokerageByDate.get(date) ?? 0);
-    const benchmark = latestBenchmarkAtOrBefore(benchmarkSnapshots, date);
-    points.push({
-      date,
-      strategyValue,
-      strategyReturnPct: (strategyValue / INITIAL_PRINCIPAL - 1) * 100,
-      taiexClose: benchmark?.benchmarkClose ?? null,
-      taiexReturnPct: benchmark?.benchmarkClose
-        ? (benchmark.benchmarkClose / baseBenchmark.benchmarkClose - 1) * 100
-        : null,
-      taiexSnapshotDate: benchmark?.date ?? null,
-      isSeed: false,
-    });
-  }
-
+  const firstObserved =
+    points.find((point) => !point.isSeed)?.date ?? seed.date;
   return ok({
-    startDate: START_DATE,
-    firstObservationDate: FIRST_OBSERVATION_DATE,
-    initialPrincipal: INITIAL_PRINCIPAL,
+    startDate: seed.date,
+    firstObservationDate: firstObserved,
+    initialPrincipal: seed.principal,
     strategyLabel: "保單借款投資（國泰交割戶＋股票市值）",
     benchmarkLabel: "TAIEX 加權指數",
     points,
