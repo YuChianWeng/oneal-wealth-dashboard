@@ -97,6 +97,7 @@ export type TransactionRow = z.infer<typeof TransactionRowSchema>;
 
 export const AccountInfoSchema = z
   .object({
+    key: z.string().min(1),
     name: z.string().min(1),
     balance: amount(),
     type: z.string().min(1),

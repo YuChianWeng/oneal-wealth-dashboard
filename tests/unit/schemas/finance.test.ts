@@ -172,7 +172,12 @@ describe("TransactionRowSchema", () => {
 // ---------------------------------------------------------------------------
 describe("AccountInfoSchema", () => {
   it("accepts valid data", () => {
-    const data = { name: "Checking", balance: 100000, type: "bank" };
+    const data = {
+      key: "Checking",
+      name: "Checking",
+      balance: 100000,
+      type: "bank",
+    };
     expect(AccountInfoSchema.parse(data)).toEqual(data);
   });
 

@@ -122,6 +122,7 @@ export function mapTransactionRows(
 
 export function mapAccountInfo(row: RawAccountRow_full): AccountInfo {
   return {
+    key: row.account_key,
     name: row.display_name,
     balance: safeNum(row.current_balance),
     type: row.account_type,

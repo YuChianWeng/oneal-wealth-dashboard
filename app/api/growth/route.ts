@@ -75,7 +75,7 @@ export async function GET(): Promise<NextResponse> {
     for (const account of accounts) {
       try {
         // Try to get balance snapshots for this account
-        const snapshotsResult = balanceSnapshots(account.name, since);
+        const snapshotsResult = balanceSnapshots(account.key, since);
         if (!snapshotsResult.ok) continue;
 
         const snapshots = snapshotsResult.value;
