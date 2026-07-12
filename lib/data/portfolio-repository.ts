@@ -64,6 +64,16 @@ function isoDateOrEmpty(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function firstValidIsoDate(...values: unknown[]): string {
+  for (const value of values) {
+    const date = isoDateOrEmpty(value);
+    if (/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date)) {
+      return date;
+    }
+  }
+  return "";
+}
+
 /**
  * Convert a raw position note into a validated PositionSummary.
  */
@@ -174,8 +184,11 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
 
   const rawTrade = {
     id: note.path,
-    date: isoDateOrEmpty(
-      fm.tradeDate ?? fm["trade-date"] ?? fm.trade_date ?? fm.date,
+    date: firstValidIsoDate(
+      fm.tradeDate,
+      fm["trade-date"],
+      fm.trade_date,
+      fm.date,
     ),
     symbol,
     name: String(fm.name ?? fm.Name ?? symbol),
