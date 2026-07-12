@@ -57,6 +57,13 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function isoDateOrEmpty(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  return typeof value === "string" ? value.trim() : "";
+}
+
 /**
  * Convert a raw position note into a validated PositionSummary.
  */
@@ -114,12 +121,13 @@ function parsePosition(note: RawNote): Result<PositionSummary, SourceError> {
     conviction: numberOrNull(fm.conviction ?? fm.Conviction),
     status: fm.status ?? fm.Status ?? "open",
     lastChecked:
-      fm.lastChecked ??
-      fm["last-checked"] ??
-      fm.last_checked ??
-      fm.LastChecked ??
-      fm.date ??
-      null,
+      isoDateOrEmpty(
+        fm.lastChecked ??
+          fm["last-checked"] ??
+          fm.last_checked ??
+          fm.LastChecked ??
+          fm.date,
+      ) || null,
   };
 
   // Validate through zod schema
@@ -166,8 +174,8 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
 
   const rawTrade = {
     id: note.path,
-    date: String(
-      fm.tradeDate ?? fm["trade-date"] ?? fm.trade_date ?? fm.date ?? "",
+    date: isoDateOrEmpty(
+      fm.tradeDate ?? fm["trade-date"] ?? fm.trade_date ?? fm.date,
     ),
     symbol,
     name: String(fm.name ?? fm.Name ?? symbol),
@@ -217,7 +225,7 @@ function isSnapshot(fm: Record<string, unknown>): boolean {
  */
 function parseSnapshot(note: RawNote): Result<SnapshotPoint, SourceError> {
   const fm = note.frontmatter;
-  const date = String(fm.date ?? fm.Date ?? "");
+  const date = isoDateOrEmpty(fm.date ?? fm.Date);
 
   const rawSnapshot = {
     date,
