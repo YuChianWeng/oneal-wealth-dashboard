@@ -25,6 +25,18 @@ const performance: LoanInvestmentPerformance = {
   initialPrincipal: 200_000,
   strategyLabel: "保單借款投資池",
   benchmarkLabel: "TAIEX",
+  economics: {
+    grossStrategyValue: 202_735.7,
+    grossReturnPct: 1.36785,
+    financingCost: null,
+    netStrategyValue: null,
+    netReturnPct: null,
+    annualLoanRate: 0.0375,
+    breakEvenAnnualReturnPct: 3.75,
+    costAsOfDate: "2026-07-12",
+    status: "needs-review",
+    statusReason: "Interest baseline requires a confirmed date and amount",
+  },
   points: [
     {
       date: "2026-06-20",
@@ -64,6 +76,45 @@ const performance: LoanInvestmentPerformance = {
 };
 
 describe("LoanInvestmentPerformanceCard reconciliation bridge", () => {
+  it("shows gross economics and fails closed on unaudited net performance", () => {
+    render(<LoanInvestmentPerformanceCard performance={performance} />);
+
+    expect(screen.getByText("毛策略資產")).toBeTruthy();
+    expect(screen.getByText("毛累積報酬")).toBeTruthy();
+    expect(screen.getByText("可歸屬融資成本")).toBeTruthy();
+    expect(screen.getByText("扣息後策略資產")).toBeTruthy();
+    expect(screen.getByText("扣息後累積報酬")).toBeTruthy();
+    expect(screen.getByText("損益兩平年化報酬")).toBeTruthy();
+    expect(
+      screen.getByText("損益兩平年化報酬").parentElement?.textContent,
+    ).toContain("3.8%");
+    expect(screen.getAllByText("待確認").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText(/融資成本尚待確認/)).toBeTruthy();
+  });
+
+  it("shows confirmed financing cost and net performance", () => {
+    const confirmed: LoanInvestmentPerformance = {
+      ...performance,
+      economics: {
+        ...performance.economics!,
+        financingCost: 472,
+        netStrategyValue: 202_263.7,
+        netReturnPct: 1.13185,
+        status: "confirmed",
+        statusReason: null,
+      },
+    };
+
+    render(<LoanInvestmentPerformanceCard performance={confirmed} />);
+
+    expect(screen.getByText("NT$472")).toBeTruthy();
+    expect(screen.getByText("NT$202,264")).toBeTruthy();
+    expect(
+      screen.getByText("扣息後累積報酬").parentElement?.textContent,
+    ).toContain("+1.1%");
+    expect(screen.queryByText(/融資成本尚待確認/)).toBeNull();
+  });
+
   it("shows confirmed, pending, effective, holdings, and per-account freshness", () => {
     render(<LoanInvestmentPerformanceCard performance={performance} />);
 

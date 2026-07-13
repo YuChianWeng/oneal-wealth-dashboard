@@ -131,13 +131,74 @@ export function LoanInvestmentPerformanceCard({
     >
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <PolicyPerformanceMetric
-          label="目前策略資產"
-          value={formatTWD(latest.strategyValue)}
+          label="毛策略資產"
+          value={formatTWD(
+            performance.economics?.grossStrategyValue ?? latest.strategyValue,
+          )}
         />
         <PolicyPerformanceMetric
-          label="策略累積報酬"
-          value={formatPercent(latest.strategyReturnPct, true)}
-          tone={latest.strategyReturnPct >= 0 ? "positive" : "negative"}
+          label="毛累積報酬"
+          value={formatPercent(
+            performance.economics?.grossReturnPct ?? latest.strategyReturnPct,
+            true,
+          )}
+          tone={
+            (performance.economics?.grossReturnPct ?? latest.strategyReturnPct) >= 0
+              ? "positive"
+              : "negative"
+          }
+        />
+        <PolicyPerformanceMetric
+          label="扣息後策略資產"
+          value={
+            performance.economics?.netStrategyValue == null
+              ? "待確認"
+              : formatTWD(performance.economics.netStrategyValue)
+          }
+        />
+        <PolicyPerformanceMetric
+          label="扣息後累積報酬"
+          value={
+            performance.economics?.netReturnPct == null
+              ? "待確認"
+              : formatPercent(performance.economics.netReturnPct, true)
+          }
+          tone={
+            performance.economics?.netReturnPct == null
+              ? "neutral"
+              : performance.economics.netReturnPct >= 0
+                ? "positive"
+                : "negative"
+          }
+        />
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-5">
+        <PolicyPerformanceMetric
+          label="可歸屬融資成本"
+          value={
+            performance.economics?.financingCost == null
+              ? "待確認"
+              : formatTWD(performance.economics.financingCost)
+          }
+        />
+        <PolicyPerformanceMetric
+          label="保單借款年利率"
+          value={
+            performance.economics
+              ? formatPercent(performance.economics.annualLoanRate * 100)
+              : "—"
+          }
+        />
+        <PolicyPerformanceMetric
+          label="損益兩平年化報酬"
+          value={
+            performance.economics?.breakEvenAnnualReturnPct == null
+              ? "—"
+              : formatPercent(
+                  performance.economics.breakEvenAnnualReturnPct,
+                )
+          }
         />
         <PolicyPerformanceMetric
           label="TAIEX 同期報酬"
@@ -149,7 +210,7 @@ export function LoanInvestmentPerformanceCard({
           tone="neutral"
         />
         <PolicyPerformanceMetric
-          label="相對大盤"
+          label="相對大盤（毛）"
           value={
             excessReturn === null ? "—" : formatPercent(excessReturn, true)
           }
@@ -158,6 +219,20 @@ export function LoanInvestmentPerformanceCard({
           }
         />
       </div>
+
+      {performance.economics?.status === "needs-review" && (
+        <div className="mt-3 rounded-ds-sm border border-dashboard-warn/30 bg-dashboard-warn/10 px-3 py-2 text-[11px] text-dashboard-warn">
+          融資成本尚待確認：
+          {performance.economics.statusReason?.toLowerCase().includes("payment")
+            ? "利息付款尚未完成策略歸屬；目前僅顯示毛績效。"
+            : "缺少已確認的起始應計利息 baseline；目前僅顯示毛績效。"}
+        </div>
+      )}
+      {performance.economics?.status === "partial" && (
+        <div className="mt-3 rounded-ds-sm border border-dashboard-warn/30 bg-dashboard-warn/10 px-3 py-2 text-[11px] text-dashboard-warn">
+          融資成本資料不完整：目前累計利息低於已確認 baseline，淨績效僅供檢查。
+        </div>
+      )}
 
       <div className="mt-4 rounded-ds-md border border-dashboard-border bg-dashboard-bg/40 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

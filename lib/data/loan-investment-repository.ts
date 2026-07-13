@@ -4,6 +4,11 @@ import { assertServerOnly } from "@/lib/server-only";
 import { SourceError } from "@/lib/errors";
 import { err, ok, type Result } from "@/lib/result";
 import { listNotes, readNote } from "@/lib/data/vault-reader";
+import { savingsPolicySummary } from "@/lib/data/insurance-policy-repository";
+import {
+  computeLoanInvestmentEconomics,
+  type LoanInvestmentEconomics,
+} from "@/lib/analytics/loan-investment-performance";
 
 assertServerOnly();
 
@@ -37,6 +42,7 @@ export interface LoanInvestmentPerformance {
   strategyLabel: string;
   benchmarkLabel: string;
   points: LoanInvestmentPoint[];
+  economics: LoanInvestmentEconomics | null;
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -179,6 +185,38 @@ export function loanInvestmentPerformance(): Result<
 
   const firstObserved =
     points.find((point) => !point.isSeed)?.date ?? seed.date;
+  const latestPoint = points.at(-1);
+  const policyResult = savingsPolicySummary();
+  let economics: LoanInvestmentEconomics | null = null;
+  if (latestPoint && policyResult.ok) {
+    try {
+      economics = computeLoanInvestmentEconomics({
+        grossStrategyValue: latestPoint.strategyValue,
+        initialPrincipal: seed.principal,
+        annualLoanRate: policyResult.value.loanRate,
+        costAsOfDate: policyResult.value.valuationDate,
+        currentAccruedInterest: policyResult.value.accruedInterest,
+        estimatedDailyAdjustment:
+          policyResult.value.estimatedDailyAdjustment,
+        interestBaselineDate:
+          policyResult.value.loanInvestmentInterestBaselineDate,
+        interestBaselineAmount:
+          policyResult.value.loanInvestmentInterestBaselineAmount,
+        // The Finance row contract has no required policy/strategy linkage key.
+        // Null means unaudited; it must never be interpreted as zero payments.
+        linkedInterestPayments: null,
+      });
+    } catch (cause) {
+      return err(
+        new SourceError(
+          "Loan-investment economics are invalid",
+          "LOAN_INVESTMENT_ECONOMICS_INVALID",
+          cause,
+        ),
+      );
+    }
+  }
+
   return ok({
     startDate: seed.date,
     firstObservationDate: firstObserved,
@@ -186,5 +224,6 @@ export function loanInvestmentPerformance(): Result<
     strategyLabel: "保單借款投資（國泰交割戶＋股票市值）",
     benchmarkLabel: "TAIEX 加權指數",
     points,
+    economics,
   });
 }

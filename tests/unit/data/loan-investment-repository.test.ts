@@ -55,5 +55,17 @@ describe("loanInvestmentPerformance audit fields", () => {
         brokerageMarketValue: 149_145.7,
       }),
     );
+    expect(result.value.economics).toEqual(
+      expect.objectContaining({
+        grossStrategyValue: 202_735.7,
+        grossReturnPct: 1.36785,
+        financingCost: null,
+        netStrategyValue: null,
+        netReturnPct: null,
+        annualLoanRate: 0.0375,
+        costAsOfDate: "2026-07-12",
+        status: "needs-review",
+      }),
+    );
   });
 });
