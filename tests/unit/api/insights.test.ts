@@ -2,12 +2,13 @@
  * Tests for GET /api/insights
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockListOpenPositions, mockMonthlySummary } = vi.hoisted(() => ({
-  mockListOpenPositions: vi.fn(),
-  mockMonthlySummary: vi.fn(),
-}));
+const { mockListOpenPositions, mockListResearchSummariesForSymbols } =
+  vi.hoisted(() => ({
+    mockListOpenPositions: vi.fn(),
+    mockListResearchSummariesForSymbols: vi.fn(),
+  }));
 
 
 vi.mock("@/lib/server-only", () => ({
@@ -20,14 +21,20 @@ vi.mock("@/lib/data/portfolio-repository", () => ({
   getDailySnapshots: vi.fn(),
 }));
 
-vi.mock("@/lib/data/finance-repository", () => ({
-  monthlySummary: mockMonthlySummary,
+vi.mock("@/lib/data/research-repository", () => ({
+  listResearchSummariesForSymbols: mockListResearchSummariesForSymbols,
 }));
 
 import { GET } from "@/app/api/insights/route";
 import { ok } from "@/lib/result";
 
 describe("GET /api/insights", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListResearchSummariesForSymbols.mockReturnValue(
+      ok({ summaries: new Map(), invalid: [] }),
+    );
+  });
   it("returns 200 with insights array", async () => {
     mockListOpenPositions.mockReturnValue(
       ok([
@@ -47,16 +54,6 @@ describe("GET /api/insights", () => {
         },
       ]),
     );
-    mockMonthlySummary.mockReturnValue(
-      ok({
-        month: "2026-07",
-        totalIncome: 50000,
-        totalExpense: 30000,
-        netCashflow: 20000,
-        categoryBreakdown: [],
-        accountBreakdown: [],
-      }),
-    );
 
     const response = await GET();
     expect(response.status).toBe(200);
@@ -75,18 +72,72 @@ describe("GET /api/insights", () => {
     }
   });
 
-  it("returns 200 with empty positions (may have empty-portfolio insight)", async () => {
-    mockListOpenPositions.mockReturnValue(ok([]));
-    mockMonthlySummary.mockReturnValue(
+  it("joins research metadata and does not report an existing note as missing", async () => {
+    mockListOpenPositions.mockReturnValue(
+      ok([
+        {
+          symbol: "2330.TW",
+          name: "台積電",
+          shares: 10,
+          avgCost: 900,
+          currentPrice: 1000,
+          marketValue: 10000,
+          unrealizedPnl: 1000,
+          unrealizedPnlPct: 11.11,
+          sector: null,
+          theme: null,
+          conviction: null,
+          status: "open",
+          lastChecked: "2026-07-10",
+        },
+      ]),
+    );
+    mockListResearchSummariesForSymbols.mockReturnValue(
       ok({
-        month: "2026-07",
-        totalIncome: 0,
-        totalExpense: 0,
-        netCashflow: 0,
-        categoryBreakdown: [],
-        accountBreakdown: [],
+        summaries: new Map([
+          [
+            "2330.TW",
+            {
+              symbol: "2330.TW",
+              name: "台積電",
+              status: "hold",
+              sector: "半導體",
+              theme: "AI / HPC",
+              conviction: 5,
+              thesis: "先進製程龍頭",
+              catalysts: null,
+              risks: null,
+              invalidation: null,
+              nextStep: null,
+              sourceChecked: "2026-07-10",
+              lastUpdated: "2026-07-10",
+            },
+          ],
+        ]),
+        invalid: [],
       }),
     );
+
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(mockListResearchSummariesForSymbols).toHaveBeenCalledWith([
+      "2330.TW",
+    ]);
+
+    const body = await response.json();
+    const ids = body.data.map((insight: { id: string }) => insight.id);
+    expect(ids.some((id: string) => id.includes("missing-research-note"))).toBe(
+      false,
+    );
+    expect(ids.some((id: string) => id.includes("missing-rationale"))).toBe(
+      false,
+    );
+    expect(ids.some((id: string) => id.includes("missing-sector"))).toBe(false);
+    expect(ids.some((id: string) => id.includes("missing-theme"))).toBe(false);
+  });
+
+  it("returns 200 with empty positions (may have empty-portfolio insight)", async () => {
+    mockListOpenPositions.mockReturnValue(ok([]));
 
     const response = await GET();
     expect(response.status).toBe(200);
@@ -101,16 +152,6 @@ describe("GET /api/insights", () => {
 
   it("has Cache-Control: private, no-store", async () => {
     mockListOpenPositions.mockReturnValue(ok([]));
-    mockMonthlySummary.mockReturnValue(
-      ok({
-        month: "2026-07",
-        totalIncome: 0,
-        totalExpense: 0,
-        netCashflow: 0,
-        categoryBreakdown: [],
-        accountBreakdown: [],
-      }),
-    );
 
     const response = await GET();
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
@@ -121,7 +162,6 @@ describe("GET /api/insights", () => {
     mockListOpenPositions.mockImplementation(() => {
       throw new Error("Internal crash with secret: /home/user/data");
     });
-    mockMonthlySummary.mockReturnValue(ok(null));
 
     const response = await GET();
     expect(response.status).toBe(500);

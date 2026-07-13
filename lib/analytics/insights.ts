@@ -52,6 +52,8 @@ export interface InsightContext {
   positions?: PositionSummary[];
   balanceSnapshots?: BalanceSnapshot[];
   researchSummaries?: ResearchSummary[];
+  /** Symbols with a matching research note that failed parsing/validation. */
+  invalidResearchSymbols?: string[];
   /** ISO-8601 timestamp for "now" (allows deterministic testing). */
   now?: string;
 }
@@ -300,22 +302,57 @@ function checkMissingCategories(
 }
 
 // ---------------------------------------------------------------------------
-// Rule 6: Missing research notes
+// Rule 6: Invalid research notes
+// ---------------------------------------------------------------------------
+
+function checkInvalidResearchNotes(
+  positions: PositionSummary[] | undefined,
+  invalidResearchSymbols: string[] | undefined,
+): Insight[] {
+  if (!positions || positions.length === 0 || !invalidResearchSymbols?.length) {
+    return [];
+  }
+
+  const heldSymbols = new Set(positions.map((p) => p.symbol.toUpperCase()));
+  const invalid = [...new Set(invalidResearchSymbols.map((s) => s.toUpperCase()))]
+    .filter((symbol) => heldSymbols.has(symbol))
+    .sort();
+  if (invalid.length === 0) return [];
+
+  return [
+    makeInsight({
+      rule: "invalid-research-note",
+      severity: "action-needed",
+      title: `${invalid.length} holding(s) have invalid research notes`,
+      description: `Research notes for ${invalid.join(", ")} exist but could not be parsed or validated. Repair their frontmatter before relying on research metadata.`,
+      drillThroughUrl: "/research",
+      key: invalid.join("-"),
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Rule 7: Missing research notes
 // ---------------------------------------------------------------------------
 
 function checkMissingResearchNotes(
   positions: PositionSummary[] | undefined,
   researchSummaries: ResearchSummary[] | undefined,
+  invalidResearchSymbols: string[] | undefined,
 ): Insight[] {
   if (!positions || positions.length === 0) return [];
 
   const researchSymbols = new Set(
     (researchSummaries ?? []).map((r) => r.symbol.toUpperCase()),
   );
-
-  const missing = positions.filter(
-    (p) => !researchSymbols.has(p.symbol.toUpperCase()),
+  const invalidSymbols = new Set(
+    (invalidResearchSymbols ?? []).map((symbol) => symbol.toUpperCase()),
   );
+
+  const missing = positions.filter((p) => {
+    const symbol = p.symbol.toUpperCase();
+    return !researchSymbols.has(symbol) && !invalidSymbols.has(symbol);
+  });
 
   if (missing.length === 0) return [];
 
@@ -374,6 +411,7 @@ export function generateInsights(ctx: InsightContext): Insight[] {
   const now = todayISO(ctx.now);
   const positions = ctx.positions;
   const researchSummaries = ctx.researchSummaries;
+  const invalidResearchSymbols = ctx.invalidResearchSymbols;
 
   const allInsights: Insight[] = [
     ...checkStalePrices(positions, now),
@@ -381,7 +419,12 @@ export function generateInsights(ctx: InsightContext): Insight[] {
     ...checkHighConcentration(positions),
     ...checkStaleResearch(researchSummaries, now),
     ...checkMissingCategories(positions),
-    ...checkMissingResearchNotes(positions, researchSummaries),
+    ...checkInvalidResearchNotes(positions, invalidResearchSymbols),
+    ...checkMissingResearchNotes(
+      positions,
+      researchSummaries,
+      invalidResearchSymbols,
+    ),
     ...checkEmptyPortfolio(positions),
   ];
 

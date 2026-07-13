@@ -26,7 +26,10 @@ vi.mock("@/lib/server-only", () => ({
   assertServerOnly: vi.fn(),
 }));
 
-import { getResearchSummary } from "@/lib/data/research-repository";
+import {
+  getResearchSummary,
+  listResearchSummariesForSymbols,
+} from "@/lib/data/research-repository";
 
 // ---------------------------------------------------------------------------
 // getResearchSummary
@@ -118,5 +121,54 @@ describe("getResearchSummary", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected Ok");
     expect(result.value.symbol).toBe("2330.TW");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listResearchSummariesForSymbols
+// ---------------------------------------------------------------------------
+
+describe("listResearchSummariesForSymbols", () => {
+  it("indexes multiple requested symbols in one result", () => {
+    const result = listResearchSummariesForSymbols([
+      "2330.TW",
+      "0050.tw",
+      "9999.TW",
+    ]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected Ok");
+
+    expect([...result.value.summaries.keys()]).toEqual([
+      "2330.TW",
+      "0050.TW",
+    ]);
+    expect(result.value.summaries.get("2330.TW")?.conviction).toBe(5);
+    expect(result.value.summaries.get("0050.TW")?.name).toBe(
+      "元大台灣50",
+    );
+    expect(result.value.invalid).toEqual([]);
+  });
+
+  it("normalizes a Yahoo .TWO alias to the vault-facing .TW symbol", () => {
+    const result = listResearchSummariesForSymbols(["2330.TWO"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected Ok");
+    expect(result.value.summaries.has("2330.TW")).toBe(true);
+  });
+
+  it("reports an invalid matching note separately from a missing note", () => {
+    const result = listResearchSummariesForSymbols([
+      "9998.TW",
+      "9999.TW",
+    ]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected Ok");
+    expect(result.value.summaries.size).toBe(0);
+    expect(result.value.invalid).toEqual([
+      { symbol: "9998.TW", code: "VAULT_INVALID_RESEARCH" },
+    ]);
   });
 });

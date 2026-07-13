@@ -11,7 +11,11 @@ import "server-only";
 import { assertServerOnly } from "@/lib/server-only";
 import { SourceError, NotFoundError } from "@/lib/errors";
 import { ok, err, type Result } from "@/lib/result";
-import { readNote, listNotes } from "@/lib/data/vault-reader";
+import {
+  readNote,
+  listNotes,
+  type RawNote,
+} from "@/lib/data/vault-reader";
 import {
   ResearchSummarySchema,
   type ResearchSummary,
@@ -19,13 +23,8 @@ import {
 
 assertServerOnly();
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const STOCKS_DIR = "Trading/Stocks";
 
-// Headings we scan for in the note body (case-insensitive)
 const SECTION_HEADINGS: Record<string, RegExp[]> = {
   thesis: [/^##\s+.*\bthesis\b/i, /^##\s+.*(一句話結論|投資論點|核心觀點)/i],
   catalysts: [/^##\s+.*\bcatalyst/i, /^##\s+.*(催化劑|利多|why this stock)/i],
@@ -41,36 +40,30 @@ const SECTION_HEADINGS: Record<string, RegExp[]> = {
   ],
 };
 
-// ---------------------------------------------------------------------------
-// Section extraction
-// ---------------------------------------------------------------------------
+export interface InvalidResearchNote {
+  symbol: string;
+  code: string;
+}
 
-/**
- * Extract content under a named heading from a Markdown body.
- * Returns the text under the heading up to the next heading of the same
- * or higher level, or end of file.
- */
+export interface ResearchIndexResult {
+  summaries: Map<string, ResearchSummary>;
+  invalid: InvalidResearchNote[];
+}
+
 function extractSection(content: string, headingPatterns: RegExp[]): string {
   const lines = content.split("\n");
   let inSection = false;
   const sectionLines: string[] = [];
 
   for (const line of lines) {
-    // Check if this line matches one of our target headings
     const matched = headingPatterns.some((p) => p.test(line));
     if (matched) {
       inSection = true;
-      continue; // skip the heading line itself
+      continue;
     }
 
-    // If we're in a section and encounter another heading, stop
-    if (inSection && /^##\s/.test(line)) {
-      break;
-    }
-
-    if (inSection) {
-      sectionLines.push(line);
-    }
+    if (inSection && /^##\s/.test(line)) break;
+    if (inSection) sectionLines.push(line);
   }
 
   return sectionLines.join("\n").trim();
@@ -84,46 +77,55 @@ function isoDateOrNull(value: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? value.trim() : null;
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+/** Normalize Taiwan aliases to the vault-facing XXXX.TW identity. */
+export function normalizeResearchSymbol(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  const match = normalized.match(/^(\d{4,6})(?:\.(?:TW|TWO))?$/);
+  return match ? `${match[1]}.TW` : normalized;
+}
 
-/**
- * Get research summary for a stock symbol.
- *
- * Reads the stock research note from Trading/Stocks/ and extracts
- * structured fields. Returns empty strings (not errors) when sections
- * are absent.
- */
-export function getResearchSummary(
+function symbolFromPath(path: string): string {
+  const base = path.split("/").pop()?.replace(/\.md$/i, "") ?? "";
+  const token = base.split(/[\s.](?=[A-Za-z])/)[0] || base.split(/\s+/)[0] || "";
+  const codeMatch = base.match(/^(\d{4,6})(?:\.(?:TW|TWO))?/i);
+  return normalizeResearchSymbol(codeMatch?.[0] ?? token);
+}
+
+function noteSymbols(note: RawNote): Set<string> {
+  const fm = note.frontmatter;
+  const values = [
+    symbolFromPath(note.path),
+    fm.quote_symbol,
+    fm.quoteSymbol,
+    fm.symbol,
+    fm.ticker,
+  ];
+  const symbols = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    const symbol = normalizeResearchSymbol(String(value));
+    if (symbol) symbols.add(symbol);
+  }
+  return symbols;
+}
+
+function nameFromPath(path: string, symbol: string): string {
+  const base = path.split("/").pop()?.replace(/\.md$/i, "").trim() ?? "";
+  const prefixes = [symbol, symbol.split(".")[0]];
+  for (const prefix of prefixes) {
+    if (base.toUpperCase().startsWith(prefix.toUpperCase())) {
+      const rest = base.slice(prefix.length).replace(/^\.stock-note/i, "").trim();
+      if (rest) return rest;
+    }
+  }
+  return symbol;
+}
+
+function parseResearchSummary(
+  note: RawNote,
   symbol: string,
 ): Result<ResearchSummary, SourceError> {
-  // List all stock notes and find matching file
-  const files = listNotes(STOCKS_DIR);
-  if (!files.ok) return files;
-
-  const safeSymbol = symbol.trim().toUpperCase();
-  const match = files.value.find((f) => {
-    const base = f.split("/").pop() ?? "";
-    return base.toUpperCase().startsWith(safeSymbol);
-  });
-
-  if (!match) {
-    return err(
-      new NotFoundError(
-        `Research note not found for symbol: ${symbol}`,
-        "VAULT_RESEARCH_NOT_FOUND",
-      ),
-    );
-  }
-
-  const noteResult = readNote(match);
-  if (!noteResult.ok) return noteResult;
-
-  const note = noteResult.value;
   const fm = note.frontmatter;
-
-  // Extract structured sections from body
   const thesis = extractSection(note.content, SECTION_HEADINGS.thesis);
   const catalysts = extractSection(note.content, SECTION_HEADINGS.catalysts);
   const risks = extractSection(note.content, SECTION_HEADINGS.risks);
@@ -133,10 +135,11 @@ export function getResearchSummary(
   );
   const nextStep = extractSection(note.content, SECTION_HEADINGS.nextStep);
 
-  // Build the raw summary
   const rawSummary = {
-    symbol: safeSymbol,
-    name: String(fm.name ?? fm.Name ?? fm.ticker ?? safeSymbol),
+    symbol,
+    name: String(
+      fm.name ?? fm.Name ?? nameFromPath(note.path, symbol) ?? symbol,
+    ),
     status: String(fm.status ?? fm.Status ?? "watchlist"),
     sector: (fm.sector ?? fm.Sector ?? null) as string | null,
     theme: (fm.theme ?? fm.Theme ?? null) as string | null,
@@ -174,4 +177,89 @@ export function getResearchSummary(
       ),
     );
   }
+}
+
+/**
+ * Read Trading/Stocks once and return valid summaries plus matching invalid notes.
+ * Symbols without any matching note are intentionally absent from both outputs.
+ */
+export function listResearchSummariesForSymbols(
+  symbols: string[],
+): Result<ResearchIndexResult, SourceError> {
+  const requested = [...new Set(symbols.map(normalizeResearchSymbol))];
+  const requestedSet = new Set(requested);
+  const files = listNotes(STOCKS_DIR);
+  if (!files.ok) return files;
+
+  const parsedBySymbol = new Map<string, ResearchSummary>();
+  const invalidBySymbol = new Map<string, InvalidResearchNote>();
+
+  for (const file of files.value) {
+    const pathSymbol = symbolFromPath(file);
+    const noteResult = readNote(file);
+    if (!noteResult.ok) {
+      if (requestedSet.has(pathSymbol) && !parsedBySymbol.has(pathSymbol)) {
+        invalidBySymbol.set(pathSymbol, {
+          symbol: pathSymbol,
+          code: noteResult.error.code,
+        });
+      }
+      continue;
+    }
+
+    const matchedSymbol = requested.find((symbol) =>
+      noteSymbols(noteResult.value).has(symbol),
+    );
+    if (!matchedSymbol || parsedBySymbol.has(matchedSymbol)) continue;
+
+    const parsed = parseResearchSummary(noteResult.value, matchedSymbol);
+    if (parsed.ok) {
+      parsedBySymbol.set(matchedSymbol, parsed.value);
+      invalidBySymbol.delete(matchedSymbol);
+    } else {
+      invalidBySymbol.set(matchedSymbol, {
+        symbol: matchedSymbol,
+        code: parsed.error.code,
+      });
+    }
+  }
+
+  const summaries = new Map<string, ResearchSummary>();
+  const invalid: InvalidResearchNote[] = [];
+  for (const symbol of requested) {
+    const summary = parsedBySymbol.get(symbol);
+    if (summary) summaries.set(symbol, summary);
+    const invalidNote = invalidBySymbol.get(symbol);
+    if (invalidNote && !summary) invalid.push(invalidNote);
+  }
+
+  return ok({ summaries, invalid });
+}
+
+export function getResearchSummary(
+  symbol: string,
+): Result<ResearchSummary, SourceError> {
+  const safeSymbol = normalizeResearchSymbol(symbol);
+  const index = listResearchSummariesForSymbols([safeSymbol]);
+  if (!index.ok) return index;
+
+  const summary = index.value.summaries.get(safeSymbol);
+  if (summary) return ok(summary);
+
+  const invalid = index.value.invalid.find((item) => item.symbol === safeSymbol);
+  if (invalid) {
+    return err(
+      new SourceError(
+        `Invalid research data for ${safeSymbol}`,
+        invalid.code,
+      ),
+    );
+  }
+
+  return err(
+    new NotFoundError(
+      `Research note not found for symbol: ${symbol}`,
+      "VAULT_RESEARCH_NOT_FOUND",
+    ),
+  );
 }

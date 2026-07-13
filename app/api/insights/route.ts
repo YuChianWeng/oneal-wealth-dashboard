@@ -1,55 +1,49 @@
 import "server-only";
 
+/**
+ * GET /api/insights — deterministic insight generation.
+ *
+ * Loads readonly position and research data, builds an enriched portfolio view,
+ * then runs pure analytics rules. Never sends raw vault content to the client.
+ */
+
 import { NextResponse } from "next/server";
 import { toSafeResponse } from "@/lib/errors";
 import { listOpenPositions } from "@/lib/data/portfolio-repository";
-import { monthlySummary } from "@/lib/data/finance-repository";
-import { computeAllocationBreakdown } from "@/lib/analytics/allocation";
+import { listResearchSummariesForSymbols } from "@/lib/data/research-repository";
+import { buildPortfolioResearchView } from "@/lib/data/portfolio-research-view";
 import { generateInsights } from "@/lib/analytics/insights";
-import { computeKpis } from "@/lib/analytics/kpis";
-import { computeCashFlow } from "@/lib/analytics/cashflow";
-import { computePerformanceChart } from "@/lib/analytics/performance";
-import { getDailySnapshots } from "@/lib/data/portfolio-repository";
-import type { OverviewResponse, PerformanceChartData } from "@/lib/analytics";
 
-/**
- * GET /api/insights
- *
- * Returns generated dashboard insights with severity levels and
- * drill-through URLs. Each insight points to the relevant page
- * for further action.
- */
-export async function GET(): Promise<NextResponse> {
+const CACHE_HEADERS = { "Cache-Control": "private, no-store" } as const;
+
+export async function GET() {
   try {
     const positionsResult = listOpenPositions();
-    const positions = positionsResult.ok ? positionsResult.value : [];
+    if (!positionsResult.ok) throw positionsResult.error;
 
-    // Current month summary
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const summaryResult = monthlySummary(currentMonth);
-    const currentMonthSummary = summaryResult.ok ? summaryResult.value : null;
+    const symbols = positionsResult.value.map((position) => position.symbol);
+    const researchResult = listResearchSummariesForSymbols(symbols);
+    if (!researchResult.ok) throw researchResult.error;
 
+    const view = buildPortfolioResearchView(
+      positionsResult.value,
+      researchResult.value,
+    );
     const insights = generateInsights({
-      positions,
-      now: now.toISOString(),
+      positions: view.positions,
+      researchSummaries: view.researchSummaries,
+      invalidResearchSymbols: view.invalidResearchSymbols,
     });
 
     return NextResponse.json(
       { version: 1, data: insights },
-      {
-        status: 200,
-        headers: { "Cache-Control": "private, no-store" },
-      },
+      { status: 200, headers: CACHE_HEADERS },
     );
-  } catch (err) {
-    const safe = toSafeResponse(err);
+  } catch (error) {
+    const safe = toSafeResponse(error);
     return NextResponse.json(
       { version: 1, error: safe },
-      {
-        status: 500,
-        headers: { "Cache-Control": "private, no-store" },
-      },
+      { status: 500, headers: CACHE_HEADERS },
     );
   }
 }

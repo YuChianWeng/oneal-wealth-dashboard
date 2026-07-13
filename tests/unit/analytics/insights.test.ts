@@ -362,6 +362,29 @@ describe("missing categories", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Rule: Invalid research notes
+// ---------------------------------------------------------------------------
+
+describe("invalid research notes", () => {
+  it("flags an invalid note without also calling it missing", () => {
+    const ctx: InsightContext = {
+      positions: [makePosition({ symbol: "9998.TW" })],
+      researchSummaries: [],
+      invalidResearchSymbols: ["9998.TW"],
+      now: NOW,
+    };
+
+    const result = generateInsights(ctx);
+    expect(
+      result.find((i) => i.id.includes("invalid-research-note")),
+    ).toBeDefined();
+    expect(
+      result.find((i) => i.id.includes("missing-research-note")),
+    ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Rule: Missing research notes
 // ---------------------------------------------------------------------------
 
