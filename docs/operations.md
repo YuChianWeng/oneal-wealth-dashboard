@@ -123,6 +123,34 @@ See [cloudflare-access-handoff.md](cloudflare-access-handoff.md) for tunnel setu
 - **No credentials in the image.** Secrets live in `.env.production` (git-ignored).
 - **Localhost-only binding.** The container port is `127.0.0.1:3003` — not reachable from the network without a tunnel.
 
+## Policy-loan investment financing cost
+
+The policy note may provide an auditable accrued-interest baseline for the loan-funded investment strategy:
+
+```yaml
+loan_investment_interest_baseline_date: 2026-06-20
+loan_investment_interest_baseline_amount: <confirmed insurer amount>
+```
+
+Both fields are required as a pair. Missing, partial, negative, or otherwise invalid baseline data must not be estimated. The repository reports `financingCostStatus: needs-review`, and the dashboard hides the net-return value until the source is confirmed.
+
+The attributable strategy financing cost is:
+
+```text
+interest payments safely linked to the strategy since its start
++ current accrued policy-loan interest
++ current estimated daily adjustment
+- confirmed interest baseline amount
+```
+
+Accounting boundaries:
+
+- The TWD 200,000 principal is the strategy's capital base and is never subtracted from strategy value a second time.
+- Interest accrued before the baseline date is excluded by the baseline subtraction.
+- Policy `net_surrender_value` remains the canonical net-worth asset value. Financing cost is a strategy-economics metric, not another balance-sheet deduction.
+- Unlinked or ambiguous `loan_interest_payment` transactions force `needs-review`; they are not guessed or silently treated as zero.
+- No production policy note receives these baseline fields until the date and insurer-confirmed amount pass the Phase 1 decision checkpoint.
+
 ## Monitoring
 
 The Docker Compose healthcheck runs every 30s:

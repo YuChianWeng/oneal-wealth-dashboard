@@ -142,6 +142,9 @@ export const InsurancePolicyInfoSchema = z
     nextInterestDue: z.string().date(),
     interestCapitalizationRule: z.string().min(1),
     valuationStatus: z.string().min(1),
+    loanInvestmentInterestBaselineDate: z.string().date().nullable(),
+    loanInvestmentInterestBaselineAmount: amount().nonnegative().nullable(),
+    financingCostStatus: z.enum(["confirmed", "needs-review"]),
   })
   .strict();
 

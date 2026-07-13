@@ -7,7 +7,10 @@ import { z } from "zod";
 import { config } from "@/lib/config";
 import { SourceError } from "@/lib/errors";
 import { err, ok, type Result } from "@/lib/result";
-import type { InsurancePolicyInfo } from "@/lib/schemas/finance";
+import {
+  InsurancePolicyInfoSchema,
+  type InsurancePolicyInfo,
+} from "@/lib/schemas/finance";
 
 const POLICY_RELATIVE_PATH = "Finance/Insurance/Policies/SavingsPolicy_2011.md";
 
@@ -29,12 +32,85 @@ const SourceSchema = z.object({
   next_interest_due: z.union([z.string(), z.date()]),
   interest_capitalization_rule: z.string(),
   valuation_status: z.string(),
+  loan_investment_interest_baseline_date: z
+    .union([z.string(), z.date()])
+    .optional(),
+  loan_investment_interest_baseline_amount: z.coerce
+    .number()
+    .finite()
+    .nonnegative()
+    .optional(),
 });
 
 function asDate(value: string | Date): string {
   return value instanceof Date
     ? value.toISOString().slice(0, 10)
     : value.slice(0, 10);
+}
+
+/** Maps allowlisted policy frontmatter into the strict public view model. */
+export function parseInsurancePolicyFrontmatter(
+  source: unknown,
+): Result<InsurancePolicyInfo, SourceError> {
+  const parsed = SourceSchema.safeParse(source);
+  if (!parsed.success) {
+    return err(
+      new SourceError(
+        "Insurance policy source is invalid",
+        "SOURCE_VALIDATION_ERROR",
+        parsed.error,
+      ),
+    );
+  }
+
+  const policy = parsed.data;
+  const ltv =
+    policy.scheduled_surrender_value > 0
+      ? Math.round(
+          (policy.policy_loan_total_deduction /
+            policy.scheduled_surrender_value) *
+            10_000,
+        ) / 100
+      : 0;
+  const hasCompleteBaseline =
+    policy.loan_investment_interest_baseline_date !== undefined &&
+    policy.loan_investment_interest_baseline_amount !== undefined;
+
+  const view = InsurancePolicyInfoSchema.safeParse({
+    name: "儲蓄險保單",
+    policyType: policy.policy_type,
+    valuationDate: asDate(policy.valuation_date),
+    scheduledSurrenderValue: policy.scheduled_surrender_value,
+    netSurrenderValue: policy.net_surrender_value,
+    loanPrincipal: policy.policy_loan_principal,
+    accruedInterest: policy.policy_loan_accrued_interest,
+    estimatedDailyAdjustment: policy.policy_loan_estimated_daily_adjustment,
+    totalLoanDeduction: policy.policy_loan_total_deduction,
+    loanRate: policy.policy_loan_rate,
+    surrenderGrowthRate: policy.policy_cash_value_growth_rate,
+    ltv,
+    nextInterestDue: asDate(policy.next_interest_due),
+    interestCapitalizationRule: policy.interest_capitalization_rule,
+    valuationStatus: policy.valuation_status,
+    loanInvestmentInterestBaselineDate: hasCompleteBaseline
+      ? asDate(policy.loan_investment_interest_baseline_date!)
+      : null,
+    loanInvestmentInterestBaselineAmount: hasCompleteBaseline
+      ? policy.loan_investment_interest_baseline_amount!
+      : null,
+    financingCostStatus: hasCompleteBaseline ? "confirmed" : "needs-review",
+  });
+
+  if (!view.success) {
+    return err(
+      new SourceError(
+        "Insurance policy source is invalid",
+        "SOURCE_VALIDATION_ERROR",
+        view.error,
+      ),
+    );
+  }
+  return ok(view.data);
 }
 
 /** Returns the single explicitly allowlisted savings-policy view model. */
@@ -54,45 +130,9 @@ export function savingsPolicySummary(): Result<
       );
     }
 
-    const parsed = SourceSchema.safeParse(
+    return parseInsurancePolicyFrontmatter(
       matter(fs.readFileSync(filePath, "utf8")).data,
     );
-    if (!parsed.success) {
-      return err(
-        new SourceError(
-          "Insurance policy source is invalid",
-          "SOURCE_VALIDATION_ERROR",
-          parsed.error,
-        ),
-      );
-    }
-    const policy = parsed.data;
-    const ltv =
-      policy.scheduled_surrender_value > 0
-        ? Math.round(
-            (policy.policy_loan_total_deduction /
-              policy.scheduled_surrender_value) *
-              10_000,
-          ) / 100
-        : 0;
-
-    return ok({
-      name: "儲蓄險保單",
-      policyType: policy.policy_type,
-      valuationDate: asDate(policy.valuation_date),
-      scheduledSurrenderValue: policy.scheduled_surrender_value,
-      netSurrenderValue: policy.net_surrender_value,
-      loanPrincipal: policy.policy_loan_principal,
-      accruedInterest: policy.policy_loan_accrued_interest,
-      estimatedDailyAdjustment: policy.policy_loan_estimated_daily_adjustment,
-      totalLoanDeduction: policy.policy_loan_total_deduction,
-      loanRate: policy.policy_loan_rate,
-      surrenderGrowthRate: policy.policy_cash_value_growth_rate,
-      ltv,
-      nextInterestDue: asDate(policy.next_interest_due),
-      interestCapitalizationRule: policy.interest_capitalization_rule,
-      valuationStatus: policy.valuation_status,
-    });
   } catch (cause) {
     return err(
       new SourceError(
