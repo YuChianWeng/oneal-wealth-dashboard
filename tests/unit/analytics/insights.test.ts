@@ -159,6 +159,31 @@ describe("stale prices", () => {
     expect(result.find((i) => i.id.includes("stale-prices"))).toBeUndefined();
   });
 
+  it("still flags a missing lastChecked outside calendar coverage", () => {
+    const result = generateInsights({
+      positions: [makePosition({ lastChecked: undefined })],
+      now: "2027-01-04T15:00:00+08:00",
+    });
+    const stale = result.find((i) => i.id.includes("stale-prices"));
+    expect(stale).toBeDefined();
+    expect(stale?.description).toContain("missing a last-checked date");
+  });
+
+  it("fails safely for invalid or offsetless now values", () => {
+    for (const now of ["not-a-date", "2026-07-13T15:00:00"]) {
+      const result = generateInsights({
+        positions: [makePosition({ lastChecked: "2026-07-10" })],
+        now,
+      });
+      expect(result.find((i) => i.id.includes("stale-prices"))).toBeUndefined();
+      expect(
+        result.every((insight) =>
+          /^\d{4}-\d{2}-\d{2}$/.test(insight.generatedAt),
+        ),
+      ).toBe(true);
+    }
+  });
+
   it("flags positions with no lastChecked", () => {
     const ctx: InsightContext = {
       positions: [makePosition({ lastChecked: undefined })],
@@ -294,6 +319,17 @@ describe("stale research", () => {
     const result = generateInsights(ctx);
     const stale = result.find((i) => i.id.includes("stale-research"));
     expect(stale).toBeDefined();
+  });
+
+  it("keeps exactly 30 calendar days fresh regardless of timestamp time", () => {
+    const result = generateInsights({
+      researchSummaries: [makeResearch({ lastUpdated: "2026-06-10" })],
+      now: "2026-07-10T12:00:00Z",
+    });
+    expect(result.find((i) => i.id.includes("stale-research"))).toBeUndefined();
+    expect(
+      result.every((insight) => insight.generatedAt === "2026-07-10"),
+    ).toBe(true);
   });
 
   it("flags research with no lastUpdated", () => {

@@ -23,7 +23,10 @@ import type { BalanceSnapshot } from "@/lib/schemas/finance";
 import type { ResearchSummary } from "@/lib/schemas/research";
 import type { Insight, InsightSeverity } from "./types";
 import { concentrationRisk } from "./financial-health";
-import { latestCompletedTwseTradingDay } from "@/lib/market/twse-calendar";
+import {
+  latestCompletedTwseTradingDay,
+  taipeiDateISO,
+} from "@/lib/market/twse-calendar";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -119,23 +122,32 @@ function checkStalePrices(
   if (!positions || positions.length === 0) return [];
 
   const expectedDate = latestCompletedTwseTradingDay(now);
-  if (!expectedDate) return [];
-  const stale: PositionSummary[] = [];
-  for (const p of positions) {
-    if (!p.lastChecked || p.lastChecked.slice(0, 10) < expectedDate) {
-      stale.push(p);
+  const stale: PositionSummary[] = positions.filter(
+    (position) => !position.lastChecked,
+  );
+  if (expectedDate) {
+    for (const position of positions) {
+      if (
+        position.lastChecked &&
+        position.lastChecked.slice(0, 10) < expectedDate
+      ) {
+        stale.push(position);
+      }
     }
   }
 
   if (stale.length === 0) return [];
 
   const symbols = stale.map((p) => p.symbol).join(", ");
+  const freshnessReason = expectedDate
+    ? `older than the latest completed TWSE session (${expectedDate})`
+    : "missing a last-checked date";
   return [
     makeInsight({
       rule: "stale-prices",
       severity: "action-needed",
       title: `${stale.length} holding(s) have stale prices`,
-      description: `Current prices for ${symbols} are older than the latest completed TWSE session (${expectedDate}). Market values and P&L may be inaccurate. Update price data in the Obsidian vault.`,
+      description: `Current prices for ${symbols} are ${freshnessReason}. Market values and P&L may be inaccurate. Update price data in the Obsidian vault.`,
       drillThroughUrl: "/portfolio",
       key: stale
         .map((p) => p.symbol)
@@ -421,6 +433,10 @@ function checkEmptyPortfolio(
  */
 export function generateInsights(ctx: InsightContext): Insight[] {
   const now = ctx.now ?? new Date().toISOString();
+  const nowDate =
+    taipeiDateISO(now) ??
+    taipeiDateISO(new Date().toISOString()) ??
+    new Date().toISOString().slice(0, 10);
   const positions = ctx.positions;
   const researchSummaries = ctx.researchSummaries;
   const invalidResearchSymbols = ctx.invalidResearchSymbols;
@@ -429,7 +445,7 @@ export function generateInsights(ctx: InsightContext): Insight[] {
     ...checkStalePrices(positions, now),
     ...checkMissingRationale(positions, invalidResearchSymbols),
     ...checkHighConcentration(positions),
-    ...checkStaleResearch(researchSummaries, now),
+    ...checkStaleResearch(researchSummaries, nowDate),
     ...checkMissingCategories(positions, invalidResearchSymbols),
     ...checkInvalidResearchNotes(positions, invalidResearchSymbols),
     ...checkMissingResearchNotes(
@@ -440,11 +456,14 @@ export function generateInsights(ctx: InsightContext): Insight[] {
     ...checkEmptyPortfolio(positions),
   ];
 
-  // Deduplicate by ID (shouldn't happen, but defensive)
+  // Deduplicate by ID (shouldn't happen, but defensive) and stamp the
+  // deterministic Asia/Taipei calendar date selected above.
   const seen = new Set<string>();
-  return allInsights.filter((i) => {
-    if (seen.has(i.id)) return false;
-    seen.add(i.id);
-    return true;
-  });
+  return allInsights
+    .filter((insight) => {
+      if (seen.has(insight.id)) return false;
+      seen.add(insight.id);
+      return true;
+    })
+    .map((insight) => ({ ...insight, generatedAt: nowDate }));
 }
