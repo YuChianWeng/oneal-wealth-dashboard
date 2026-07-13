@@ -18,6 +18,16 @@ export interface LoanInvestmentPoint {
   taiexSnapshotDate: string | null;
   isSeed: boolean;
   cashAsOfDate: string | null;
+  confirmedCash: number | null;
+  cashAsOfSource: string;
+  cashAsOfQuality:
+    | "confirmed-explicit-event"
+    | "inferred-from-balance-entry"
+    | "unavailable";
+  pendingTradeCashAdjustment: number;
+  pendingTradeCount: number;
+  effectiveCashValue: number | null;
+  brokerageMarketValue: number | null;
 }
 
 export interface LoanInvestmentPerformance {
@@ -64,6 +74,13 @@ export function loanInvestmentPerformance(): Result<
     benchmarkDate: string | null;
     isSeed: boolean;
     cashAsOfDate: string | null;
+    confirmedCash: number | null;
+    cashAsOfSource: string;
+    cashAsOfQuality: LoanInvestmentPoint["cashAsOfQuality"];
+    pendingTradeCashAdjustment: number;
+    pendingTradeCount: number;
+    effectiveCashValue: number | null;
+    brokerageMarketValue: number | null;
   }>;
 
   for (const path of filesResult.value) {
@@ -85,6 +102,15 @@ export function loanInvestmentPerformance(): Result<
       strategyReturnPct === null
     )
       continue;
+    const cashAsOfDate = isoDate(fm.cash_as_of_date);
+    const rawCashQuality = String(fm.cash_as_of_quality ?? "").trim();
+    const cashAsOfQuality: LoanInvestmentPoint["cashAsOfQuality"] =
+      rawCashQuality === "confirmed-explicit-event" ||
+      rawCashQuality === "inferred-from-balance-entry"
+        ? rawCashQuality
+        : cashAsOfDate
+          ? "inferred-from-balance-entry"
+          : "unavailable";
     raw.push({
       date,
       principal,
@@ -93,7 +119,20 @@ export function loanInvestmentPerformance(): Result<
       taiexClose: numberOrNull(fm.benchmark_close),
       benchmarkDate: isoDate(fm.benchmark_snapshot_date),
       isSeed: fm.is_seed === true || fm.is_seed === "true",
-      cashAsOfDate: isoDate(fm.cash_as_of_date),
+      cashAsOfDate,
+      confirmedCash: numberOrNull(fm.cash_balance),
+      cashAsOfSource:
+        String(fm.cash_as_of_source ?? "").trim() ||
+        (cashAsOfDate ? "legacy-balance-entry" : "unavailable"),
+      cashAsOfQuality,
+      pendingTradeCashAdjustment:
+        numberOrNull(fm.pending_trade_cash_adjustment) ?? 0,
+      pendingTradeCount: Math.max(
+        0,
+        Math.trunc(numberOrNull(fm.pending_trade_count) ?? 0),
+      ),
+      effectiveCashValue: numberOrNull(fm.effective_cash_value),
+      brokerageMarketValue: numberOrNull(fm.brokerage_market_value),
     });
   }
 
@@ -129,6 +168,13 @@ export function loanInvestmentPerformance(): Result<
     taiexSnapshotDate: point.benchmarkDate,
     isSeed: point.isSeed,
     cashAsOfDate: point.cashAsOfDate,
+    confirmedCash: point.confirmedCash,
+    cashAsOfSource: point.cashAsOfSource,
+    cashAsOfQuality: point.cashAsOfQuality,
+    pendingTradeCashAdjustment: point.pendingTradeCashAdjustment,
+    pendingTradeCount: point.pendingTradeCount,
+    effectiveCashValue: point.effectiveCashValue,
+    brokerageMarketValue: point.brokerageMarketValue,
   }));
 
   const firstObserved =
