@@ -11,11 +11,7 @@ import "server-only";
 import { assertServerOnly } from "@/lib/server-only";
 import { SourceError, NotFoundError } from "@/lib/errors";
 import { ok, err, type Result } from "@/lib/result";
-import {
-  readNote,
-  listNotes,
-  type RawNote,
-} from "@/lib/data/vault-reader";
+import { readNote, listNotes, type RawNote } from "@/lib/data/vault-reader";
 import {
   ResearchSummarySchema,
   type ResearchSummary,
@@ -86,7 +82,8 @@ export function normalizeResearchSymbol(value: string): string {
 
 function symbolFromPath(path: string): string {
   const base = path.split("/").pop()?.replace(/\.md$/i, "") ?? "";
-  const token = base.split(/[\s.](?=[A-Za-z])/)[0] || base.split(/\s+/)[0] || "";
+  const token =
+    base.split(/[\s.](?=[A-Za-z])/)[0] || base.split(/\s+/)[0] || "";
   const codeMatch = base.match(/^(\d{4,6})(?:\.(?:TW|TWO))?/i);
   return normalizeResearchSymbol(codeMatch?.[0] ?? token);
 }
@@ -114,7 +111,10 @@ function nameFromPath(path: string, symbol: string): string {
   const prefixes = [symbol, symbol.split(".")[0]];
   for (const prefix of prefixes) {
     if (base.toUpperCase().startsWith(prefix.toUpperCase())) {
-      const rest = base.slice(prefix.length).replace(/^\.stock-note/i, "").trim();
+      const rest = base
+        .slice(prefix.length)
+        .replace(/^\.stock-note/i, "")
+        .trim();
       if (rest) return rest;
     }
   }
@@ -134,6 +134,11 @@ function parseResearchSummary(
     SECTION_HEADINGS.invalidation,
   );
   const nextStep = extractSection(note.content, SECTION_HEADINGS.nextStep);
+  const canonicalThemes = fm.themes ?? fm.Themes ?? [];
+  const primaryCanonicalTheme =
+    Array.isArray(canonicalThemes) && typeof canonicalThemes[0] === "string"
+      ? canonicalThemes[0]
+      : null;
 
   const rawSummary = {
     symbol,
@@ -142,7 +147,25 @@ function parseResearchSummary(
     ),
     status: String(fm.status ?? fm.Status ?? "watchlist"),
     sector: (fm.sector ?? fm.Sector ?? null) as string | null,
-    theme: (fm.theme ?? fm.Theme ?? null) as string | null,
+    industry: (fm.industry ?? fm.Industry ?? null) as string | null,
+    subindustry: (fm.subindustry ?? fm.Subindustry ?? null) as string | null,
+    portfolioRole: (fm.portfolio_role ?? fm.portfolioRole ?? null) as
+      | string
+      | null,
+    themes: canonicalThemes,
+    theme: (primaryCanonicalTheme ?? fm.theme ?? fm.Theme ?? null) as
+      | string
+      | null,
+    classificationVersion: Number.isFinite(
+      Number(fm.classification_version ?? fm.classificationVersion),
+    )
+      ? Number(fm.classification_version ?? fm.classificationVersion)
+      : null,
+    classificationStatus: (fm.classification_status ??
+      fm.classificationStatus ??
+      null) as string | null,
+    assetClass: (fm.asset_class ?? fm.assetClass ?? null) as string | null,
+    market: (fm.market ?? fm.Market ?? null) as string | null,
     conviction: Number.isFinite(Number(fm.conviction ?? fm.Conviction))
       ? Number(fm.conviction ?? fm.Conviction)
       : null,
@@ -296,13 +319,12 @@ export function getResearchSummary(
   const summary = index.value.summaries.get(safeSymbol);
   if (summary) return ok(summary);
 
-  const invalid = index.value.invalid.find((item) => item.symbol === safeSymbol);
+  const invalid = index.value.invalid.find(
+    (item) => item.symbol === safeSymbol,
+  );
   if (invalid) {
     return err(
-      new SourceError(
-        `Invalid research data for ${safeSymbol}`,
-        invalid.code,
-      ),
+      new SourceError(`Invalid research data for ${safeSymbol}`, invalid.code),
     );
   }
 

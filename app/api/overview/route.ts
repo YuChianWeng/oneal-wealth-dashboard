@@ -3,9 +3,13 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { toSafeResponse } from "@/lib/errors";
-import { listOpenPositions, getDailySnapshots } from "@/lib/data/portfolio-repository";
+import {
+  listOpenPositions,
+  getDailySnapshots,
+} from "@/lib/data/portfolio-repository";
 import { listResearchSummariesForSymbols } from "@/lib/data/research-repository";
 import { buildPortfolioResearchView } from "@/lib/data/portfolio-research-view";
+import { loadStockTaxonomyLabels } from "@/lib/data/stock-taxonomy-repository";
 import { monthlySummary } from "@/lib/data/finance-repository";
 import { computeAllocationBreakdown } from "@/lib/analytics/allocation";
 import {
@@ -76,8 +80,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       researchResult.value,
     );
 
-    // Allocation (uses sibling's computeAllocationBreakdown)
-    const allocation = computeAllocationBreakdown(positions);
+    const taxonomyResult = loadStockTaxonomyLabels();
+    const taxonomyLabels = taxonomyResult.ok
+      ? taxonomyResult.value
+      : new Map<string, string>();
+
+    // Allocation uses the same research-enriched taxonomy view as insights.
+    const allocation = computeAllocationBreakdown(
+      researchView.positions,
+      taxonomyLabels,
+    );
 
     // Total portfolio value
     const totalPortfolioValue = allocation.byStock.reduce(

@@ -36,7 +36,15 @@ export const PositionSummarySchema = z
     unrealizedPnl: amount().nullable(),
     unrealizedPnlPct: amount().nullable(),
     sector: z.string().nullable().optional(),
+    industry: z.string().nullable().optional(),
+    subindustry: z.string().nullable().optional(),
+    portfolioRole: z.string().nullable().optional(),
+    themes: z.array(z.string().min(1)).optional(),
     theme: z.string().nullable().optional(),
+    classificationVersion: z.number().int().positive().nullable().optional(),
+    classificationStatus: z.string().nullable().optional(),
+    assetClass: z.string().nullable().optional(),
+    market: z.string().nullable().optional(),
     conviction: z.number().int().min(1).max(5).nullable().optional(),
     status: z.string().optional(),
     lastChecked: dateStr().nullable().optional(),
@@ -52,6 +60,7 @@ export type PositionSummary = z.infer<typeof PositionSummarySchema>;
 export const HoldingAllocationSchema = z
   .object({
     category: z.string().min(1),
+    categoryId: z.string().min(1).optional(),
     value: amount(),
     percentage: amount(),
   })

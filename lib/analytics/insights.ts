@@ -23,16 +23,14 @@ import type { BalanceSnapshot } from "@/lib/schemas/finance";
 import type { ResearchSummary } from "@/lib/schemas/research";
 import type { Insight, InsightSeverity } from "./types";
 import { concentrationRisk } from "./financial-health";
+import { latestCompletedTwseTradingDay } from "@/lib/market/twse-calendar";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 /** Current insight version — bump when rule logic changes materially. */
-export const INSIGHT_VERSION = "1.1";
-
-/** Stale price threshold: prices older than this many days trigger a warning. */
-const STALE_PRICE_DAYS = 1;
+export const INSIGHT_VERSION = "1.2";
 
 /** Stale research threshold: research older than this many days triggers a warning. */
 const STALE_RESEARCH_DAYS = 30;
@@ -120,14 +118,11 @@ function checkStalePrices(
 ): Insight[] {
   if (!positions || positions.length === 0) return [];
 
+  const expectedDate = latestCompletedTwseTradingDay(now);
+  if (!expectedDate) return [];
   const stale: PositionSummary[] = [];
   for (const p of positions) {
-    if (!p.lastChecked) {
-      stale.push(p);
-      continue;
-    }
-    const days = daysBetween(now, p.lastChecked);
-    if (days > STALE_PRICE_DAYS) {
+    if (!p.lastChecked || p.lastChecked.slice(0, 10) < expectedDate) {
       stale.push(p);
     }
   }
@@ -140,7 +135,7 @@ function checkStalePrices(
       rule: "stale-prices",
       severity: "action-needed",
       title: `${stale.length} holding(s) have stale prices`,
-      description: `Current prices for ${symbols} are more than ${STALE_PRICE_DAYS} day(s) old. Market values and P&L may be inaccurate. Update price data in the Obsidian vault.`,
+      description: `Current prices for ${symbols} are older than the latest completed TWSE session (${expectedDate}). Market values and P&L may be inaccurate. Update price data in the Obsidian vault.`,
       drillThroughUrl: "/portfolio",
       key: stale
         .map((p) => p.symbol)
@@ -167,8 +162,7 @@ function checkMissingRationale(
   // Invalid research is handled by its own rule; do not infer metadata gaps
   // from a note that could not be parsed.
   const missing: PositionSummary[] = positions.filter(
-    (p) =>
-      p.conviction == null && !invalidSymbols.has(p.symbol.toUpperCase()),
+    (p) => p.conviction == null && !invalidSymbols.has(p.symbol.toUpperCase()),
   );
 
   if (missing.length === 0) return [];
@@ -328,7 +322,9 @@ function checkInvalidResearchNotes(
   }
 
   const heldSymbols = new Set(positions.map((p) => p.symbol.toUpperCase()));
-  const invalid = [...new Set(invalidResearchSymbols.map((s) => s.toUpperCase()))]
+  const invalid = [
+    ...new Set(invalidResearchSymbols.map((s) => s.toUpperCase())),
+  ]
     .filter((symbol) => heldSymbols.has(symbol))
     .sort();
   if (invalid.length === 0) return [];
@@ -424,7 +420,7 @@ function checkEmptyPortfolio(
  * @returns ordered list of insights, may be empty.
  */
 export function generateInsights(ctx: InsightContext): Insight[] {
-  const now = todayISO(ctx.now);
+  const now = ctx.now ?? new Date().toISOString();
   const positions = ctx.positions;
   const researchSummaries = ctx.researchSummaries;
   const invalidResearchSymbols = ctx.invalidResearchSymbols;

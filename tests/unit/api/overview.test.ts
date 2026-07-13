@@ -7,11 +7,13 @@ const {
   mockGetDailySnapshots,
   mockListOpenPositions,
   mockListResearchSummariesForSymbols,
+  mockLoadStockTaxonomyLabels,
   mockMonthlySummary,
 } = vi.hoisted(() => ({
   mockGetDailySnapshots: vi.fn(),
   mockListOpenPositions: vi.fn(),
   mockListResearchSummariesForSymbols: vi.fn(),
+  mockLoadStockTaxonomyLabels: vi.fn(),
   mockMonthlySummary: vi.fn(),
 }));
 
@@ -26,6 +28,10 @@ vi.mock("@/lib/data/portfolio-repository", () => ({
 
 vi.mock("@/lib/data/research-repository", () => ({
   listResearchSummariesForSymbols: mockListResearchSummariesForSymbols,
+}));
+
+vi.mock("@/lib/data/stock-taxonomy-repository", () => ({
+  loadStockTaxonomyLabels: mockLoadStockTaxonomyLabels,
 }));
 
 vi.mock("@/lib/data/finance-repository", () => ({
@@ -76,7 +82,17 @@ describe("GET /api/overview research enrichment", () => {
     vi.clearAllMocks();
     mockListOpenPositions.mockReturnValue(ok([position]));
     mockGetDailySnapshots.mockReturnValue(ok([]));
-    mockMonthlySummary.mockReturnValue(err(new Error("optional fixture absent")));
+    mockMonthlySummary.mockReturnValue(
+      err(new Error("optional fixture absent")),
+    );
+    mockLoadStockTaxonomyLabels.mockReturnValue(
+      ok(
+        new Map([
+          ["information-technology", "資訊科技"],
+          ["ai-hpc", "AI／HPC"],
+        ]),
+      ),
+    );
     mockListResearchSummariesForSymbols.mockReturnValue(
       ok({ summaries: new Map([["2330.TW", research]]), invalid: [] }),
     );
@@ -86,13 +102,27 @@ describe("GET /api/overview research enrichment", () => {
     const response = await GET(request());
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-    expect(mockListResearchSummariesForSymbols).toHaveBeenCalledWith(["2330.TW"]);
+    expect(mockListResearchSummariesForSymbols).toHaveBeenCalledWith([
+      "2330.TW",
+    ]);
 
     const body = await response.json();
     expect(body.version).toBe(1);
+    expect(body.data.allocation.bySector[0]).toMatchObject({
+      id: "information-technology",
+      label: "資訊科技",
+    });
+    expect(body.data.allocation.byTheme[0]).toMatchObject({
+      id: "ai-hpc",
+      label: "AI／HPC",
+    });
     const ids = body.data.insights.map((item: { id: string }) => item.id);
-    expect(ids.some((id: string) => id.includes("missing-research-note"))).toBe(false);
-    expect(ids.some((id: string) => id.includes("missing-rationale"))).toBe(false);
+    expect(ids.some((id: string) => id.includes("missing-research-note"))).toBe(
+      false,
+    );
+    expect(ids.some((id: string) => id.includes("missing-rationale"))).toBe(
+      false,
+    );
     expect(ids.some((id: string) => id.includes("missing-sector"))).toBe(false);
     expect(ids.some((id: string) => id.includes("missing-theme"))).toBe(false);
   });

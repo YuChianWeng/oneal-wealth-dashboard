@@ -61,6 +61,8 @@ export interface AnalyticsSnapshotPoint {
 // ---------------------------------------------------------------------------
 
 export interface AllocationBucket {
+  /** Stable machine ID when the bucket represents a taxonomy dimension. */
+  id?: string;
   label: string;
   value: number;
   percentage: number;
@@ -69,7 +71,10 @@ export interface AllocationBucket {
 export interface AllocationResult {
   byStock: AllocationBucket[];
   bySector: AllocationBucket[];
+  byIndustry: AllocationBucket[];
+  /** Multi-label exposure; percentages may sum above 100%. */
   byTheme: AllocationBucket[];
+  byPortfolioRole: AllocationBucket[];
 }
 
 // ---------------------------------------------------------------------------

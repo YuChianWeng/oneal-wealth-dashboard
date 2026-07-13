@@ -127,6 +127,38 @@ describe("stale prices", () => {
     expect(stale!.title).toContain("stale prices");
   });
 
+  it("accepts Friday prices through Monday before the update window", () => {
+    const result = generateInsights({
+      positions: [makePosition({ lastChecked: "2026-07-10" })],
+      now: "2026-07-13T09:00:00+08:00",
+    });
+    expect(result.find((i) => i.id.includes("stale-prices"))).toBeUndefined();
+  });
+
+  it("requires Monday prices after the update window", () => {
+    const result = generateInsights({
+      positions: [makePosition({ lastChecked: "2026-07-10" })],
+      now: "2026-07-13T15:00:00+08:00",
+    });
+    expect(result.find((i) => i.id.includes("stale-prices"))).toBeDefined();
+  });
+
+  it("accepts the last session across a verified TWSE long holiday", () => {
+    const result = generateInsights({
+      positions: [makePosition({ lastChecked: "2026-04-02" })],
+      now: "2026-04-07T09:00:00+08:00",
+    });
+    expect(result.find((i) => i.id.includes("stale-prices"))).toBeUndefined();
+  });
+
+  it("does not guess when the annual TWSE holiday calendar is absent", () => {
+    const result = generateInsights({
+      positions: [makePosition({ lastChecked: "2026-01-01" })],
+      now: "2027-01-04T15:00:00+08:00",
+    });
+    expect(result.find((i) => i.id.includes("stale-prices"))).toBeUndefined();
+  });
+
   it("flags positions with no lastChecked", () => {
     const ctx: InsightContext = {
       positions: [makePosition({ lastChecked: undefined })],
@@ -402,7 +434,9 @@ describe("invalid research notes", () => {
     expect(
       result.find((i) => i.id.includes("invalid-research-note")),
     ).toBeDefined();
-    expect(result.find((i) => i.id.includes("missing-rationale"))).toBeUndefined();
+    expect(
+      result.find((i) => i.id.includes("missing-rationale")),
+    ).toBeUndefined();
     expect(result.find((i) => i.id.includes("missing-sector"))).toBeUndefined();
     expect(result.find((i) => i.id.includes("missing-theme"))).toBeUndefined();
   });

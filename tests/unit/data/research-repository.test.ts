@@ -157,14 +157,9 @@ describe("listResearchSummariesForSymbols", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected Ok");
 
-    expect([...result.value.summaries.keys()]).toEqual([
-      "2330.TW",
-      "0050.TW",
-    ]);
+    expect([...result.value.summaries.keys()]).toEqual(["2330.TW", "0050.TW"]);
     expect(result.value.summaries.get("2330.TW")?.conviction).toBe(5);
-    expect(result.value.summaries.get("0050.TW")?.name).toBe(
-      "元大台灣50",
-    );
+    expect(result.value.summaries.get("0050.TW")?.name).toBe("元大台灣50");
     expect(result.value.invalid).toEqual([]);
   });
 
@@ -220,11 +215,28 @@ describe("listResearchSummariesForSymbols", () => {
     ]);
   });
 
+  it("parses canonical taxonomy fields and derives a legacy primary theme", () => {
+    const result = listResearchSummariesForSymbols(["3005.TW"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected Ok");
+    expect(result.value.summaries.get("3005.TW")).toMatchObject({
+      classificationVersion: 1,
+      classificationStatus: "classified",
+      assetClass: "equity",
+      market: "TW",
+      sector: "information-technology",
+      industry: "semiconductors",
+      subindustry: "foundry",
+      portfolioRole: "satellite",
+      themes: ["ai-hpc", "taiwan-large-cap"],
+      theme: "ai-hpc",
+      conviction: 4,
+    });
+  });
+
   it("reports an invalid matching note separately from a missing note", () => {
-    const result = listResearchSummariesForSymbols([
-      "9998.TW",
-      "9999.TW",
-    ]);
+    const result = listResearchSummariesForSymbols(["9998.TW", "9999.TW"]);
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected Ok");

@@ -2,12 +2,17 @@
  * Tests for GET /api/portfolio
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockListOpenPositions } = vi.hoisted(() => ({
+const {
+  mockListOpenPositions,
+  mockListResearchSummariesForSymbols,
+  mockLoadStockTaxonomyLabels,
+} = vi.hoisted(() => ({
   mockListOpenPositions: vi.fn(),
+  mockListResearchSummariesForSymbols: vi.fn(),
+  mockLoadStockTaxonomyLabels: vi.fn(),
 }));
-
 
 vi.mock("@/lib/server-only", () => ({
   assertServerOnly: vi.fn(),
@@ -16,6 +21,14 @@ vi.mock("@/lib/server-only", () => ({
 vi.mock("@/lib/data/portfolio-repository", () => ({
   listOpenPositions: mockListOpenPositions,
   getDailySnapshots: vi.fn(),
+}));
+
+vi.mock("@/lib/data/research-repository", () => ({
+  listResearchSummariesForSymbols: mockListResearchSummariesForSymbols,
+}));
+
+vi.mock("@/lib/data/stock-taxonomy-repository", () => ({
+  loadStockTaxonomyLabels: mockLoadStockTaxonomyLabels,
 }));
 
 import { GET } from "@/app/api/portfolio/route";
@@ -38,6 +51,14 @@ const samplePosition = {
 };
 
 describe("GET /api/portfolio", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListResearchSummariesForSymbols.mockReturnValue(
+      ok({ summaries: new Map(), invalid: [] }),
+    );
+    mockLoadStockTaxonomyLabels.mockReturnValue(ok(new Map()));
+  });
+
   it("returns 200 with positions and allocation", async () => {
     mockListOpenPositions.mockReturnValue(ok([samplePosition]));
 
@@ -53,6 +74,70 @@ describe("GET /api/portfolio", () => {
     expect(body.data.allocation.byStock[0].category).toContain("2330.TW");
     expect(body.data.summary.totalMarketValue).toBe(600000);
     expect(body.data.summary.positionCount).toBe(1);
+  });
+
+  it("enriches canonical taxonomy and returns display-labelled allocation", async () => {
+    mockListOpenPositions.mockReturnValue(
+      ok([{ ...samplePosition, sector: null, theme: null, conviction: null }]),
+    );
+    mockListResearchSummariesForSymbols.mockReturnValue(
+      ok({
+        summaries: new Map([
+          [
+            "2330.TW",
+            {
+              symbol: "2330.TW",
+              name: "台積電",
+              status: "hold",
+              classificationVersion: 1,
+              classificationStatus: "classified",
+              assetClass: "equity",
+              market: "TW",
+              sector: "information-technology",
+              industry: "semiconductors",
+              subindustry: "foundry",
+              portfolioRole: "core",
+              themes: ["ai-hpc", "taiwan-large-cap"],
+              theme: "ai-hpc",
+              conviction: 5,
+              thesis: null,
+              catalysts: null,
+              risks: null,
+              invalidation: null,
+              nextStep: null,
+              sourceChecked: "2026-07-13",
+              lastUpdated: "2026-07-13",
+            },
+          ],
+        ]),
+        invalid: [],
+      }),
+    );
+    mockLoadStockTaxonomyLabels.mockReturnValue(
+      ok(
+        new Map([
+          ["information-technology", "資訊科技"],
+          ["semiconductors", "半導體"],
+          ["core", "核心配置"],
+          ["ai-hpc", "AI／HPC"],
+          ["taiwan-large-cap", "台灣大型權值股"],
+        ]),
+      ),
+    );
+
+    const response = await GET();
+    const body = await response.json();
+    expect(body.data.positions[0].themes).toEqual([
+      "ai-hpc",
+      "taiwan-large-cap",
+    ]);
+    expect(body.data.allocation.bySector[0]).toMatchObject({
+      categoryId: "information-technology",
+      category: "資訊科技",
+    });
+    expect(body.data.allocation.byIndustry[0].category).toBe("半導體");
+    expect(body.data.allocation.byPortfolioRole[0].category).toBe("核心配置");
+    expect(body.data.allocation.byTheme).toHaveLength(2);
   });
 
   it("returns 200 with empty positions array", async () => {

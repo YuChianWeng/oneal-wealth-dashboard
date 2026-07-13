@@ -69,6 +69,38 @@ describe("buildPortfolioResearchView", () => {
     expect(result.invalidResearchSymbols).toEqual([]);
   });
 
+  it("enriches all canonical taxonomy dimensions and derives primary theme", () => {
+    const summary = research({
+      classificationVersion: 1,
+      classificationStatus: "classified",
+      assetClass: "equity",
+      market: "TW",
+      sector: "information-technology",
+      industry: "semiconductors",
+      subindustry: "foundry",
+      portfolioRole: "satellite",
+      themes: ["ai-hpc", "taiwan-large-cap"],
+      theme: "ai-hpc",
+    });
+    const result = buildPortfolioResearchView([position()], {
+      summaries: new Map([["2330.TW", summary]]),
+      invalid: [],
+    });
+
+    expect(result.positions[0]).toMatchObject({
+      classificationVersion: 1,
+      classificationStatus: "classified",
+      assetClass: "equity",
+      market: "TW",
+      sector: "information-technology",
+      industry: "semiconductors",
+      subindustry: "foundry",
+      portfolioRole: "satellite",
+      themes: ["ai-hpc", "taiwan-large-cap"],
+      theme: "ai-hpc",
+    });
+  });
+
   it("normalizes case when joining symbols", () => {
     const result = buildPortfolioResearchView(
       [position({ symbol: "2330.tw" })],

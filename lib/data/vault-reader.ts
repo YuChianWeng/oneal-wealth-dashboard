@@ -42,6 +42,7 @@ const WHITELISTED_ROOTS: readonly string[] = [
   "Trading/Portfolio/Snapshots",
   "Finance/Insurance/Loan Investment Snapshots",
   "Trading/Stocks",
+  "Trading/Stock Classification Taxonomy.md",
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -61,6 +61,22 @@ describe("readNote", () => {
     expect(result.value.content).toContain("## Next Step");
   });
 
+  it("reads the exact whitelisted stock taxonomy note", () => {
+    const result = readNote("Trading/Stock Classification Taxonomy.md");
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected Ok");
+    expect(result.value.frontmatter.taxonomy_version).toBe(1);
+    expect(result.value.content).toContain("information-technology");
+  });
+
+  it("still rejects other files directly under Trading", () => {
+    const result = readNote("Trading/Secret.md");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("VAULT_PATH_OUTSIDE_WHITELIST");
+    }
+  });
+
   it("rejects path with .. traversal", () => {
     const result = readNote(
       "Trading/Portfolio/Positions/../../../etc/passwd.md",

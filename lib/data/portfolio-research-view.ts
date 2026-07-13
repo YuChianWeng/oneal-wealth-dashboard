@@ -33,10 +33,36 @@ export function buildPortfolioResearchView(
     const research = researchBySymbol.get(canonicalSymbol(position.symbol));
     if (!research) return { ...position };
 
+    const researchThemes =
+      research.themes && research.themes.length > 0
+        ? research.themes
+        : research.theme
+          ? [research.theme]
+          : undefined;
+    const themes =
+      researchThemes ??
+      (position.themes && position.themes.length > 0
+        ? position.themes
+        : position.theme
+          ? [position.theme]
+          : []);
+
     return {
       ...position,
+      classificationVersion:
+        research.classificationVersion ??
+        position.classificationVersion ??
+        null,
+      classificationStatus:
+        research.classificationStatus ?? position.classificationStatus ?? null,
+      assetClass: research.assetClass ?? position.assetClass ?? null,
+      market: research.market ?? position.market ?? null,
       sector: research.sector ?? position.sector ?? null,
-      theme: research.theme ?? position.theme ?? null,
+      industry: research.industry ?? position.industry ?? null,
+      subindustry: research.subindustry ?? position.subindustry ?? null,
+      portfolioRole: research.portfolioRole ?? position.portfolioRole ?? null,
+      themes,
+      theme: themes[0] ?? position.theme ?? null,
       conviction: research.conviction ?? position.conviction ?? null,
     };
   });

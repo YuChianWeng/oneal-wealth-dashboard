@@ -17,14 +17,19 @@ import Link from "next/link";
 // Types from API
 // ---------------------------------------------------------------------------
 
-import type { PositionSummary, HoldingAllocation } from "@/lib/schemas/portfolio";
+import type {
+  PositionSummary,
+  HoldingAllocation,
+} from "@/lib/schemas/portfolio";
 
 interface PortfolioResponse {
   positions: PositionSummary[];
   allocation: {
     byStock: HoldingAllocation[];
     bySector: HoldingAllocation[];
+    byIndustry: HoldingAllocation[];
     byTheme: HoldingAllocation[];
+    byPortfolioRole: HoldingAllocation[];
   };
   summary: {
     totalMarketValue: number;
@@ -47,15 +52,14 @@ type SortDir = "asc" | "desc";
 // ---------------------------------------------------------------------------
 
 export default function PortfolioPage() {
-  const { data, error, isLoading, mutate } = useApi<PortfolioResponse>(
-    "/api/portfolio",
-  );
+  const { data, error, isLoading, mutate } =
+    useApi<PortfolioResponse>("/api/portfolio");
 
   const [sortKey, setSortKey] = useState<SortKey>("marketValue");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [allocTab, setAllocTab] = useState<"stock" | "sector" | "theme">(
-    "sector",
-  );
+  const [allocTab, setAllocTab] = useState<
+    "stock" | "sector" | "industry" | "theme" | "role"
+  >("sector");
 
   // ── Derived data (always called — guards handle null/empty internally) ──
   const sorted = useMemo(() => {
@@ -93,12 +97,21 @@ export default function PortfolioPage() {
     if (!data) return [];
     if (allocTab === "stock") return data.allocation.byStock;
     if (allocTab === "sector") return data.allocation.bySector;
+    if (allocTab === "industry") return data.allocation.byIndustry;
+    if (allocTab === "role") return data.allocation.byPortfolioRole;
     return data.allocation.byTheme;
   }, [data, allocTab]);
 
   const unclassifiedCount = useMemo(
     () =>
-      data?.positions?.filter((p) => !p.sector && !p.theme).length ?? 0,
+      data?.positions?.filter(
+        (position) =>
+          !position.sector?.trim() ||
+          !(
+            position.themes?.some((theme) => theme.trim()) ||
+            position.theme?.trim()
+          ),
+      ).length ?? 0,
     [data],
   );
 
@@ -152,10 +165,7 @@ export default function PortfolioPage() {
           trend={data.summary.totalUnrealizedPnl >= 0 ? "up" : "down"}
           trendLabel={formatPercent(data.summary.unrealizedPnlPct, true)}
         />
-        <MetricCard
-          label="總成本"
-          value={formatTWD(data.summary.totalCost)}
-        />
+        <MetricCard label="總成本" value={formatTWD(data.summary.totalCost)} />
         <MetricCard
           label="未實現損益"
           value={formatTWD(data.summary.totalUnrealizedPnl)}
@@ -200,12 +210,7 @@ export default function PortfolioPage() {
                   }}
                 />
                 <th className="px-3 py-[10px] font-medium">名稱</th>
-                <Th
-                  label="股數"
-                  active={false}
-                  dir="desc"
-                  onClick={() => {}}
-                />
+                <Th label="股數" active={false} dir="desc" onClick={() => {}} />
                 <th className="px-3 py-[10px] font-medium">均價</th>
                 <th className="px-3 py-[10px] font-medium">現價</th>
                 <Th
@@ -338,36 +343,49 @@ export default function PortfolioPage() {
         header={
           <div className="flex items-center justify-between">
             <h2 className="text-[15px] font-semibold">配置分析</h2>
-            <div className="flex gap-1 rounded-[8px] border border-dashboard-border p-[2px]">
-              {(["sector", "theme", "stock"] as const).map((tab) => (
+            <div className="flex max-w-full gap-1 overflow-x-auto rounded-[8px] border border-dashboard-border p-[2px]">
+              {(
+                [
+                  ["sector", "產業"],
+                  ["industry", "次產業"],
+                  ["theme", "主題"],
+                  ["role", "角色"],
+                  ["stock", "個股"],
+                ] as const
+              ).map(([tab, label]) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setAllocTab(tab)}
-                  className={`rounded-[6px] px-3 py-[4px] text-[12px] font-medium transition-colors ${
+                  className={`whitespace-nowrap rounded-[6px] px-3 py-[4px] text-[12px] font-medium transition-colors ${
                     allocTab === tab
                       ? "bg-dashboard-surface-2 text-dashboard-text"
                       : "bg-transparent text-dashboard-faint hover:text-dashboard-muted"
                   }`}
                 >
-                  {tab === "stock"
-                    ? "個股"
-                    : tab === "sector"
-                      ? "產業"
-                      : "主題"}
+                  {label}
                 </button>
               ))}
             </div>
           </div>
         }
       >
+        {allocTab === "theme" && (
+          <p className="mb-3 text-[11px] text-dashboard-faint">
+            多標籤採完整曝險計算，百分比合計可能超過 100%。
+          </p>
+        )}
         {allocData.length === 0 ? (
           <div className="py-4 text-center text-[13px] text-dashboard-faint">
             {allocTab === "theme"
               ? "尚無主題分類資料"
               : allocTab === "sector"
                 ? "尚無產業分類資料"
-                : "尚無個股資料"}
+                : allocTab === "industry"
+                  ? "尚無次產業分類資料"
+                  : allocTab === "role"
+                    ? "尚無投資組合角色資料"
+                    : "尚無個股資料"}
           </div>
         ) : (
           <div className="space-y-[10px]">

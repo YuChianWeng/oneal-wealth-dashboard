@@ -7,6 +7,8 @@ import {
   computeAllocationByStock,
   computeAllocationBySector,
   computeAllocationByTheme,
+  computeAllocationByIndustry,
+  computeAllocationByPortfolioRole,
   computeAllocationBreakdown,
 } from "@/lib/analytics/allocation";
 import type { PositionSummary } from "@/lib/schemas/portfolio";
@@ -251,6 +253,69 @@ describe("computeAllocationByTheme", () => {
 
   it("returns empty for empty positions", () => {
     expect(computeAllocationByTheme([])).toEqual([]);
+  });
+});
+
+describe("canonical taxonomy allocation", () => {
+  const canonical: PositionSummary[] = [
+    {
+      ...samplePositions[0],
+      sector: "information-technology",
+      industry: "semiconductors",
+      portfolioRole: "satellite",
+      themes: ["ai-hpc", "taiwan-large-cap"],
+    },
+    {
+      ...samplePositions[1],
+      sector: "information-technology",
+      industry: "semiconductors",
+      portfolioRole: "core",
+      themes: ["ai-hpc"],
+    },
+  ];
+  const labels = new Map([
+    ["information-technology", "資訊科技"],
+    ["semiconductors", "半導體"],
+    ["satellite", "衛星配置"],
+    ["core", "核心配置"],
+    ["ai-hpc", "AI／HPC"],
+    ["taiwan-large-cap", "台灣大型權值股"],
+  ]);
+
+  it("uses taxonomy display labels for sector, industry, and role", () => {
+    expect(computeAllocationBySector(canonical, labels)[0].label).toBe(
+      "資訊科技",
+    );
+    expect(computeAllocationByIndustry(canonical, labels)[0].label).toBe(
+      "半導體",
+    );
+    expect(
+      computeAllocationByPortfolioRole(canonical, labels).map(
+        (item) => item.label,
+      ),
+    ).toEqual(expect.arrayContaining(["核心配置", "衛星配置"]));
+  });
+
+  it("counts each canonical theme as full portfolio exposure", () => {
+    const themes = computeAllocationByTheme(canonical, labels);
+    expect(themes.find((item) => item.label === "AI／HPC")?.percentage).toBe(
+      100,
+    );
+    expect(themes.find((item) => item.label === "台灣大型權值股")?.value).toBe(
+      600_000,
+    );
+    expect(
+      themes.reduce((sum, item) => sum + item.percentage, 0),
+    ).toBeGreaterThan(100);
+  });
+
+  it("returns all five dimensions in the breakdown", () => {
+    const result = computeAllocationBreakdown(canonical, labels);
+    expect(result.byStock).toHaveLength(2);
+    expect(result.bySector).toHaveLength(1);
+    expect(result.byIndustry).toHaveLength(1);
+    expect(result.byTheme).toHaveLength(2);
+    expect(result.byPortfolioRole).toHaveLength(2);
   });
 });
 
