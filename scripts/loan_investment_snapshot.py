@@ -13,6 +13,7 @@ import argparse
 import datetime as dt
 import json
 import math
+import os
 import re
 import sys
 from pathlib import Path
@@ -28,6 +29,13 @@ TRANSACTIONS = VAULT / 'Trading/Portfolio/Transactions'
 OUTPUT = VAULT / 'Finance/Insurance/Loan Investment Snapshots'
 RAW_BALANCE_LOGS = Path('/home/ubuntu/.hermes/logs/finance/raw')
 TZ = ZoneInfo('Asia/Taipei')
+_REPO_CALENDAR = Path(__file__).resolve().parents[1] / 'data/market/twse-calendar.json'
+_DEFAULT_CALENDAR = (
+    _REPO_CALENDAR
+    if _REPO_CALENDAR.exists()
+    else Path('/home/ubuntu/services/oneal-wealth-dashboard/data/market/twse-calendar.json')
+)
+TWSE_CALENDAR = Path(os.environ.get('TWSE_CALENDAR_PATH', _DEFAULT_CALENDAR))
 
 
 def frontmatter(path: Path) -> dict:
@@ -53,6 +61,76 @@ def iso(value) -> str:
     if isinstance(value, (dt.date, dt.datetime)):
         return value.isoformat()[:10]
     return str(value or '')[:10]
+
+
+def required_iso_date(value, label: str, source: str) -> str:
+    """Parse a date-only source value without truncating timestamps or garbage."""
+    if isinstance(value, dt.datetime):
+        raise ValueError(f'invalid {label} in {source}')
+    raw = value.isoformat() if isinstance(value, dt.date) else str(value or '').strip()
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', raw):
+        raise ValueError(f'invalid {label} in {source}')
+    try:
+        parsed = dt.date.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f'invalid {label} in {source}') from exc
+    if parsed.isoformat() != raw:
+        raise ValueError(f'invalid {label} in {source}')
+    return raw
+
+
+def verified_twse_holidays() -> dict[str, set[str]]:
+    """Load and validate the canonical checked-in TWSE holiday artifact."""
+    try:
+        payload = json.loads(TWSE_CALENDAR.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError('verified TWSE calendar is unavailable') from exc
+    if (
+        not isinstance(payload, dict)
+        or payload.get('schemaVersion') != 1
+        or payload.get('market') != 'TWSE'
+        or payload.get('timezone') != 'Asia/Taipei'
+        or not isinstance(payload.get('source'), str)
+        or not payload['source']
+        or not isinstance(payload.get('holidaysByYear'), dict)
+        or not isinstance(payload.get('verifiedYears'), list)
+    ):
+        raise ValueError('verified TWSE calendar is invalid')
+
+    holidays_by_year: dict[str, set[str]] = {}
+    for year, holidays in payload['holidaysByYear'].items():
+        if not re.fullmatch(r'\d{4}', str(year)) or not isinstance(holidays, list):
+            raise ValueError('verified TWSE calendar is invalid')
+        normalized: set[str] = set()
+        for holiday in holidays:
+            parsed = required_iso_date(holiday, 'holiday', 'TWSE calendar')
+            if not parsed.startswith(f'{year}-'):
+                raise ValueError('verified TWSE calendar is invalid')
+            normalized.add(parsed)
+        holidays_by_year[str(year)] = normalized
+
+    verified_years = {str(year) for year in payload['verifiedYears']}
+    if verified_years != set(holidays_by_year):
+        raise ValueError('verified TWSE calendar is invalid')
+    return holidays_by_year
+
+
+def add_twse_trading_days(date: str, trading_days: int) -> str | None:
+    if trading_days < 0:
+        return None
+    holidays_by_year = verified_twse_holidays()
+    if date[:4] not in holidays_by_year:
+        return None
+    candidate = dt.date.fromisoformat(date)
+    remaining = trading_days
+    while remaining:
+        candidate += dt.timedelta(days=1)
+        year = candidate.isoformat()[:4]
+        if year not in holidays_by_year:
+            return None
+        if candidate.weekday() < 5 and candidate.isoformat() not in holidays_by_year[year]:
+            remaining -= 1
+    return candidate.isoformat()
 
 
 def policy_config() -> dict:
@@ -173,16 +251,6 @@ def pending_trade_cash_adjustment(cash_as_of: str, valuation_date: str) -> tuple
                 return value
         return None
 
-    def required_date(value, label: str, filename: str) -> str:
-        raw = iso(value)
-        try:
-            parsed = dt.date.fromisoformat(raw)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f'invalid {label} in transaction {filename}') from exc
-        if parsed.isoformat() != raw:
-            raise ValueError(f'invalid {label} in transaction {filename}')
-        return raw
-
     def required_cashflow(value, filename: str) -> float:
         try:
             parsed = float(value)
@@ -200,20 +268,26 @@ def pending_trade_cash_adjustment(cash_as_of: str, valuation_date: str) -> tuple
         if str(fm.get('type') or '').lower() != 'transaction':
             continue
 
-        trade_date = required_date(
+        trade_date = required_iso_date(
             first_value(fm, 'tradeDate', 'trade-date', 'trade_date', 'date'),
             'trade date',
-            path.name,
+            f'transaction {path.name}',
         )
         raw_settlement = first_value(
             fm, 'settlementDate', 'settlement-date', 'settlement_date'
         )
         if raw_settlement is None:
             settlement_date = None
-            coverage_date = trade_date
+            coverage_date = add_twse_trading_days(trade_date, 2)
+            if coverage_date is None:
+                raise ValueError(
+                    f'missing settlement date without verified TWSE calendar coverage in {path.name}'
+                )
         else:
-            settlement_date = required_date(
-                raw_settlement, 'settlement date', path.name
+            settlement_date = required_iso_date(
+                raw_settlement,
+                'settlement date',
+                f'transaction {path.name}',
             )
             if settlement_date < trade_date:
                 raise ValueError(f'settlement date precedes trade date in {path.name}')

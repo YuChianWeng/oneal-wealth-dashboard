@@ -37,6 +37,7 @@ const data = {
       side: "sell" as const,
       tradeDate: "2026-07-13",
       settlementDate: "2026-07-15",
+      settlementDateQuality: "canonical" as const,
       netCashflow: 8_743,
       effectiveCashAdjustment: 8_743,
       ageTradingDays: 0,
@@ -67,6 +68,28 @@ describe("ReconciliationPage", () => {
     expect(screen.getByText("明確確認")).toBeTruthy();
     expect(screen.getByText("2330.TW")).toBeTruthy();
     expect(screen.getByText("待交割")).toBeTruthy();
+  });
+
+  it("labels settlement dates inferred from the verified TWSE calendar", () => {
+    mockUseApi.mockReturnValue({
+      data: {
+        ...data,
+        pendingSettlements: [
+          {
+            ...data.pendingSettlements[0],
+            settlementDateQuality: "inferred-twse-t-plus-2" as const,
+          },
+        ],
+      },
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    });
+
+    render(<ReconciliationPage />);
+
+    expect(screen.getByText("2026-07-15")).toBeTruthy();
+    expect(screen.getByText("推定 T+2")).toBeTruthy();
   });
 
   it("adds a dedicated, non-placeholder navigation target", () => {

@@ -228,7 +228,13 @@ export function ReconciliationPage() {
                       {settlement.tradeDate}
                     </td>
                     <td className="px-3 py-3 font-mono text-dashboard-muted">
-                      {settlement.settlementDate ?? "待確認"}
+                      <div>{settlement.settlementDate ?? "待確認"}</div>
+                      {settlement.settlementDateQuality ===
+                        "inferred-twse-t-plus-2" && (
+                        <div className="mt-0.5 text-[10px] font-sans text-dashboard-warn">
+                          推定 T+2
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-right font-mono text-dashboard-text">
                       {signedTwd(settlement.effectiveCashAdjustment)}

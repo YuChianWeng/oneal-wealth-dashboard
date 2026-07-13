@@ -22,7 +22,7 @@ def write_trade(
     *,
     trade_date: str,
     side: str,
-    net_cashflow: float | str,
+    net_cashflow: float | str | None,
     settlement_date: str | None = None,
     settlement_key: str = "settlement_date",
     note_type: str = "transaction",
@@ -30,12 +30,15 @@ def write_trade(
     settlement_line = (
         f"{settlement_key}: '{settlement_date}'\n" if settlement_date else ""
     )
+    cashflow_line = (
+        f"net_cashflow: {net_cashflow}\n" if net_cashflow is not None else ""
+    )
     (directory / filename).write_text(
         "---\n"
         f"type: {note_type}\n"
         f"trade_date: '{trade_date}'\n"
         f"side: {side}\n"
-        f"net_cashflow: {net_cashflow}\n"
+        f"{cashflow_line}"
         f"{settlement_line}"
         "---\n"
         "# fixture\n",
@@ -121,6 +124,42 @@ class PendingTradeCashAdjustmentTests(unittest.TestCase):
             self.assertEqual(adjustment, 8743)
             self.assertEqual(count, 1)
 
+    def test_missing_settlement_uses_verified_t_plus_two_coverage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            trades = Path(tmp)
+            write_trade(
+                trades,
+                "missing-settlement.md",
+                trade_date="2026-07-13",
+                side="sell",
+                net_cashflow=8743,
+            )
+            with patch.object(snapshot, "TRANSACTIONS", trades):
+                t_plus_one = snapshot.pending_trade_cash_adjustment(
+                    "2026-07-14", "2026-07-16"
+                )
+                t_plus_two = snapshot.pending_trade_cash_adjustment(
+                    "2026-07-15", "2026-07-16"
+                )
+            self.assertEqual(t_plus_one, (8743, 1))
+            self.assertEqual(t_plus_two, (0, 0))
+
+    def test_missing_settlement_fails_closed_without_verified_calendar(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            trades = Path(tmp)
+            write_trade(
+                trades,
+                "outside-calendar.md",
+                trade_date="2027-07-13",
+                side="sell",
+                net_cashflow=8743,
+            )
+            with patch.object(snapshot, "TRANSACTIONS", trades):
+                with self.assertRaisesRegex(ValueError, "verified TWSE calendar"):
+                    snapshot.pending_trade_cash_adjustment(
+                        "2027-07-12", "2027-07-16"
+                    )
+
     def test_ignores_future_and_non_transaction_notes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             trades = Path(tmp)
@@ -151,6 +190,8 @@ class PendingTradeCashAdjustmentTests(unittest.TestCase):
             ("invalid-side.md", "transfer", 500),
             ("invalid-cashflow.md", "sell", "not-a-number"),
             ("zero-cashflow.md", "sell", 0),
+            ("missing-cashflow.md", "sell", None),
+            ("nonfinite-cashflow.md", "sell", float("nan")),
         ):
             with self.subTest(filename=filename):
                 with tempfile.TemporaryDirectory() as tmp:
@@ -168,24 +209,53 @@ class PendingTradeCashAdjustmentTests(unittest.TestCase):
                                 "2026-07-12", "2026-07-13"
                             )
 
-    def test_accepts_camel_case_settlement_alias(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            trades = Path(tmp)
-            write_trade(
-                trades,
-                "camel-settlement.md",
-                trade_date="2026-07-13",
-                settlement_date="2026-07-15",
-                settlement_key="settlementDate",
-                side="sell",
-                net_cashflow=8743,
-            )
-            with patch.object(snapshot, "TRANSACTIONS", trades):
-                adjustment, count = snapshot.pending_trade_cash_adjustment(
-                    "2026-07-14", "2026-07-14"
-                )
-            self.assertEqual(adjustment, 8743)
-            self.assertEqual(count, 1)
+    def test_accepts_all_settlement_aliases(self) -> None:
+        for settlement_key in (
+            "settlementDate",
+            "settlement-date",
+            "settlement_date",
+        ):
+            with self.subTest(settlement_key=settlement_key):
+                with tempfile.TemporaryDirectory() as tmp:
+                    trades = Path(tmp)
+                    write_trade(
+                        trades,
+                        "settlement.md",
+                        trade_date="2026-07-13",
+                        settlement_date="2026-07-15",
+                        settlement_key=settlement_key,
+                        side="sell",
+                        net_cashflow=8743,
+                    )
+                    with patch.object(snapshot, "TRANSACTIONS", trades):
+                        adjustment, count = snapshot.pending_trade_cash_adjustment(
+                            "2026-07-14", "2026-07-14"
+                        )
+                    self.assertEqual(adjustment, 8743)
+                    self.assertEqual(count, 1)
+
+    def test_rejects_non_date_trade_and_settlement_values(self) -> None:
+        for field, value in (
+            ("trade", "2026-07-13T23:59:59+08:00"),
+            ("trade", "2026-07-13garbage"),
+            ("settlement", "2026-07-15T00:00:00Z"),
+        ):
+            with self.subTest(field=field, value=value):
+                with tempfile.TemporaryDirectory() as tmp:
+                    trades = Path(tmp)
+                    write_trade(
+                        trades,
+                        "invalid-date.md",
+                        trade_date=value if field == "trade" else "2026-07-13",
+                        settlement_date=value if field == "settlement" else None,
+                        side="sell",
+                        net_cashflow=8743,
+                    )
+                    with patch.object(snapshot, "TRANSACTIONS", trades):
+                        with self.assertRaisesRegex(ValueError, "invalid .* date"):
+                            snapshot.pending_trade_cash_adjustment(
+                                "2026-07-12", "2026-07-16"
+                            )
 
     def test_fails_closed_on_duplicate_business_transaction(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

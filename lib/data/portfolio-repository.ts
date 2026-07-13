@@ -64,6 +64,20 @@ function isoDateOrEmpty(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function exactIsoDateOrEmpty(value: unknown): string {
+  const date = isoDateOrEmpty(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "";
+  const parsed = new Date(`${date}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === date
+    ? date
+    : "";
+}
+
+function firstPresent(...values: unknown[]): unknown {
+  return values.find((value) => value !== null && value !== undefined && value !== "");
+}
+
 function firstValidIsoDate(...values: unknown[]): string {
   for (const value of values) {
     const date = isoDateOrEmpty(value);
@@ -235,19 +249,18 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
     );
   }
 
-  const settlementDate = firstValidIsoDate(
+  const rawSettlement = firstPresent(
     fm.settlementDate,
     fm["settlement-date"],
     fm.settlement_date,
   );
+  const settlementDate =
+    rawSettlement === undefined ? undefined : exactIsoDateOrEmpty(rawSettlement);
   const rawTradeWithoutId = {
-    date: firstValidIsoDate(
-      fm.tradeDate,
-      fm["trade-date"],
-      fm.trade_date,
-      fm.date,
+    date: exactIsoDateOrEmpty(
+      firstPresent(fm.tradeDate, fm["trade-date"], fm.trade_date, fm.date),
     ),
-    ...(settlementDate ? { settlementDate } : {}),
+    ...(rawSettlement !== undefined ? { settlementDate } : {}),
     symbol,
     name: String(fm.name ?? fm.Name ?? symbol),
     side: String(fm.side ?? fm.Side ?? "").toLowerCase(),

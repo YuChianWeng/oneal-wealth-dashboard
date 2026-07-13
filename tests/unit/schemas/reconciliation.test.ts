@@ -15,6 +15,7 @@ const pendingSettlement = {
   side: "sell" as const,
   tradeDate: "2026-07-13",
   settlementDate: "2026-07-15",
+  settlementDateQuality: "canonical" as const,
   netCashflow: 8_743,
   effectiveCashAdjustment: 8_743,
   ageTradingDays: 0,

@@ -84,6 +84,24 @@ describe("investmentReconciliation failure modes", () => {
     expect(result.error.code).toBe("RECONCILIATION_SOURCE_UNAVAILABLE");
   });
 
+  it("fails safely when required snapshot inputs are individually unavailable", () => {
+    for (const field of [
+      "confirmedCash",
+      "cashAsOfDate",
+      "brokerageMarketValue",
+    ]) {
+      mockPerformance.mockReturnValue(
+        ok({ points: [point({ [field]: null })] }),
+      );
+
+      const result = investmentReconciliation();
+
+      expect(result.ok, field).toBe(false);
+      if (result.ok) continue;
+      expect(result.error.code, field).toBe("RECONCILIATION_SOURCE_UNAVAILABLE");
+    }
+  });
+
   it("propagates transaction repository failures without leaking paths", () => {
     mockPerformance.mockReturnValue(ok({ points: [point()] }));
     mockTrades.mockReturnValue(

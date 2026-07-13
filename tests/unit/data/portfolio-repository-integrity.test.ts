@@ -36,7 +36,10 @@ const tradeFrontmatter = {
   status: "confirmed",
 };
 
-function note(path: string, frontmatter = tradeFrontmatter) {
+function note(
+  path: string,
+  frontmatter: Record<string, unknown> = tradeFrontmatter,
+) {
   return ok({ path, frontmatter, content: "# fixture" });
 }
 
@@ -66,6 +69,15 @@ describe("portfolio transaction repository integrity", () => {
     for (const frontmatter of [
       { ...tradeFrontmatter, side: "transfer" },
       { ...tradeFrontmatter, trade_date: "2026-02-30" },
+      { ...tradeFrontmatter, settlement_date: "2026-07-15T00:00:00Z" },
+      { ...tradeFrontmatter, net_cashflow: undefined },
+      { ...tradeFrontmatter, net_cashflow: 0 },
+      { ...tradeFrontmatter, net_cashflow: Number.POSITIVE_INFINITY },
+      {
+        ...tradeFrontmatter,
+        trade_date: "2027-07-13",
+        net_cashflow: "not-a-number",
+      },
     ]) {
       mockListNotes.mockReturnValue(
         ok(["Trading/Portfolio/Transactions/invalid.md"]),
@@ -76,7 +88,7 @@ describe("portfolio transaction repository integrity", () => {
 
       const result = listAllTrades();
 
-      expect(result.ok).toBe(false);
+      expect(result.ok, JSON.stringify(frontmatter)).toBe(false);
       if (result.ok) continue;
       expect(result.error.code).toBe("VAULT_INVALID_TRADE");
       expect(result.error.message).toBe("Invalid trade data for 2330.TW");

@@ -60,6 +60,7 @@ describe("computeInvestmentReconciliation", () => {
           side: "sell",
           tradeDate: "2026-07-13",
           settlementDate: "2026-07-15",
+          settlementDateQuality: "canonical",
           netCashflow: 8_743,
           effectiveCashAdjustment: 8_743,
           ageTradingDays: 0,
@@ -208,6 +209,11 @@ describe("computeInvestmentReconciliation", () => {
           trade({ id: "missing-cashflow", netCashflow: undefined }),
           trade({ id: "zero-cashflow", netCashflow: 0 }),
           trade({ id: "invalid-cashflow", netCashflow: Number.NaN }),
+          trade({
+            id: "future-invalid-cashflow",
+            tradeDate: "2026-07-14",
+            netCashflow: undefined,
+          }),
         ],
       }),
     );
@@ -216,6 +222,7 @@ describe("computeInvestmentReconciliation", () => {
     expect(result.pendingSettlements).toEqual([]);
     expect(result.status).toBe("attention");
     expect(result.warnings).toEqual([
+      "Trade future-invalid-cashflow: missing or invalid netCashflow",
       "Trade invalid-cashflow: missing or invalid netCashflow",
       "Trade missing-cashflow: missing or invalid netCashflow",
       "Trade zero-cashflow: missing or invalid netCashflow",
@@ -282,6 +289,8 @@ describe("computeInvestmentReconciliation", () => {
     expect(result.pendingSettlements[0]).toEqual(
       expect.objectContaining({
         id: "missing-tplus-one",
+        settlementDate: "2026-07-15",
+        settlementDateQuality: "inferred-twse-t-plus-2",
         ageTradingDays: 3,
         status: "overdue",
         effectiveCashAdjustment: 8_743,
@@ -305,6 +314,8 @@ describe("computeInvestmentReconciliation", () => {
     expect(result.pendingSettlements[0]).toEqual(
       expect.objectContaining({
         id: "missing-tplus-two",
+        settlementDate: "2026-07-15",
+        settlementDateQuality: "inferred-twse-t-plus-2",
         status: "covered-by-cash-snapshot",
         effectiveCashAdjustment: 0,
       }),
@@ -375,7 +386,8 @@ describe("computeInvestmentReconciliation", () => {
       expect.objectContaining({ id: "overdue", status: "overdue" }),
       expect.objectContaining({
         id: "date-mismatch",
-        settlementDate: null,
+        settlementDate: "2026-07-16",
+        settlementDateQuality: "inferred-twse-t-plus-2",
         status: "pending",
       }),
     ]);

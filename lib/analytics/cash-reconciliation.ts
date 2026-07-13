@@ -149,10 +149,6 @@ export function computeInvestmentReconciliation(
       continue;
     }
 
-    // Future trades do not belong to this valuation. Historical trades remain
-    // visible as covered audit items when a cash snapshot has absorbed them.
-    if (trade.tradeDate > input.valuationDate) continue;
-
     if (
       typeof trade.netCashflow !== "number" ||
       !Number.isFinite(trade.netCashflow) ||
@@ -172,6 +168,10 @@ export function computeInvestmentReconciliation(
       warnings.push(`Trade ${tradeId}: settlementDate precedes tradeDate`);
       settlementDate = null;
     }
+
+    // Validate every transaction before valuation filtering so malformed future
+    // notes cannot disappear from a seemingly clean reconciliation.
+    if (trade.tradeDate > input.valuationDate) continue;
 
     const normalizedAdjustment =
       trade.side === "sell"
@@ -202,6 +202,12 @@ export function computeInvestmentReconciliation(
       );
     }
     const cashCoverageDate = settlementDate ?? inferredSettlementDate;
+    const settlementDateQuality: PendingSettlement["settlementDateQuality"] =
+      settlementDate !== null
+        ? "canonical"
+        : inferredSettlementDate !== null
+          ? "inferred-twse-t-plus-2"
+          : "unavailable";
     const coveredByCashSnapshot =
       cashCoverageDate !== null && input.cashAsOfDate >= cashCoverageDate;
     const overdueByDate =
@@ -228,7 +234,8 @@ export function computeInvestmentReconciliation(
       symbol: trade.symbol,
       side: trade.side,
       tradeDate: trade.tradeDate,
-      settlementDate,
+      settlementDate: cashCoverageDate,
+      settlementDateQuality,
       netCashflow: trade.netCashflow,
       effectiveCashAdjustment: coveredByCashSnapshot ? 0 : normalizedAdjustment,
       ageTradingDays,

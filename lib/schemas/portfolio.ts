@@ -84,7 +84,9 @@ export const TradeRecordSchema = z
     price: amount(),
     grossAmount: amount().optional(),
     feeTax: amount().optional(),
-    netCashflow: amount().optional(),
+    netCashflow: amount().refine((value) => value !== 0, {
+      message: "netCashflow must be nonzero",
+    }),
     reason: z.string().nullable().optional(),
     strategy: z.string().nullable().optional(),
     broker: z.string().nullable().optional(),
