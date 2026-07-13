@@ -156,45 +156,106 @@ def latest_confirmed_account_balance(account_key: str, valuation_date: str) -> d
 def pending_trade_cash_adjustment(cash_as_of: str, valuation_date: str) -> tuple[float, int]:
     """Return unsettled brokerage cash value after the confirmed cash snapshot.
 
-    Position notes reflect a trade on trade date, while the confirmed Cathay
-    settlement-account balance may lag until settlement or the next manual
-    balance entry. For strategy NAV, a sell becomes a receivable and a buy
-    becomes a payable on trade date. A confirmed cash balance clears a trade
-    only on or after its settlement date; older notes without settlement_date
-    conservatively fall back to trade date.
+    Transaction notes are parsed fail-closed. Aliases match the TypeScript
+    repository, and malformed dates, sides, or cashflows abort the snapshot
+    instead of producing a plausible partial NAV.
     """
     adjustment = 0.0
     count = 0
+    seen_transactions: set[tuple] = set()
     if not TRANSACTIONS.exists():
         return adjustment, count
+
+    def first_value(fm: dict, *keys: str):
+        for key in keys:
+            value = fm.get(key)
+            if value is not None and value != '':
+                return value
+        return None
+
+    def required_date(value, label: str, filename: str) -> str:
+        raw = iso(value)
+        try:
+            parsed = dt.date.fromisoformat(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'invalid {label} in transaction {filename}') from exc
+        if parsed.isoformat() != raw:
+            raise ValueError(f'invalid {label} in transaction {filename}')
+        return raw
+
+    def required_cashflow(value, filename: str) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'invalid net cashflow in transaction {filename}') from exc
+        if not math.isfinite(parsed) or parsed == 0:
+            raise ValueError(f'invalid net cashflow in transaction {filename}')
+        return parsed
 
     for path in sorted(TRANSACTIONS.glob('*.md')):
         try:
             fm = frontmatter(path)
         except Exception as exc:
-            print(f'WARN: skipping transaction with invalid frontmatter {path}: {exc}', file=sys.stderr)
+            raise ValueError(f'invalid transaction frontmatter: {path.name}') from exc
+        if str(fm.get('type') or '').lower() != 'transaction':
             continue
-        if str(fm.get('type') or '') != 'transaction':
-            continue
-        trade_date = iso(fm.get('trade_date') or fm.get('date'))
-        if not trade_date or trade_date > valuation_date:
-            continue
-        settlement_date = iso(fm.get('settlement_date'))
-        coverage_date = (
-            settlement_date
-            if settlement_date and settlement_date >= trade_date
-            else trade_date
+
+        trade_date = required_date(
+            first_value(fm, 'tradeDate', 'trade-date', 'trade_date', 'date'),
+            'trade date',
+            path.name,
         )
-        if cash_as_of >= coverage_date:
-            continue
-        side = str(fm.get('side') or '').strip().lower()
-        raw_cashflow = num(fm.get('net_cashflow'))
-        if side in {'buy', '現買', 'b'}:
-            adjustment -= abs(raw_cashflow)
-        elif side in {'sell', '現賣', 's'}:
-            adjustment += abs(raw_cashflow)
+        raw_settlement = first_value(
+            fm, 'settlementDate', 'settlement-date', 'settlement_date'
+        )
+        if raw_settlement is None:
+            settlement_date = None
+            coverage_date = trade_date
         else:
+            settlement_date = required_date(
+                raw_settlement, 'settlement date', path.name
+            )
+            if settlement_date < trade_date:
+                raise ValueError(f'settlement date precedes trade date in {path.name}')
+            coverage_date = settlement_date
+
+        side = str(first_value(fm, 'side', 'Side') or '').strip().lower()
+        if side not in {'buy', 'sell'}:
+            raise ValueError(f'invalid side in transaction {path.name}')
+        raw_cashflow = required_cashflow(
+            first_value(fm, 'netCashflow', 'net-cashflow', 'net_cashflow'),
+            path.name,
+        )
+
+        order_id = str(
+            first_value(fm, 'orderId', 'order-id', 'order_id') or ''
+        ).strip()
+        if order_id:
+            identity = (
+                'order',
+                str(first_value(fm, 'broker', 'Broker') or 'unknown').strip().lower(),
+                order_id,
+            )
+        else:
+            identity = (
+                'trade',
+                trade_date,
+                settlement_date or '',
+                str(first_value(fm, 'symbol', 'ticker', 'Symbol') or '').strip(),
+                side,
+                str(first_value(fm, 'shares', 'Shares') or '').strip(),
+                str(first_value(fm, 'price', 'Price') or '').strip(),
+                str(first_value(fm, 'grossAmount', 'gross-amount', 'gross_amount') or '').strip(),
+                str(first_value(fm, 'feeTax', 'fee-tax', 'fee_tax') or '').strip(),
+                raw_cashflow,
+            )
+        if identity in seen_transactions:
+            raise ValueError(f'duplicate transaction: {path.name}')
+        seen_transactions.add(identity)
+
+        if trade_date > valuation_date or cash_as_of >= coverage_date:
             continue
+        adjustment += abs(raw_cashflow) if side == 'sell' else -abs(raw_cashflow)
         count += 1
     return adjustment, count
 

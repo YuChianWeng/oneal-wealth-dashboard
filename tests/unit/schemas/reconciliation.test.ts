@@ -84,6 +84,14 @@ describe("InvestmentReconciliationSchema", () => {
     );
   });
 
+  it("requires explicit cash freshness provenance", () => {
+    const { cashAsOfSource: _source, ...withoutSource } = reconciliation;
+    const { cashAsOfQuality: _quality, ...withoutQuality } = reconciliation;
+
+    expect(() => InvestmentReconciliationSchema.parse(withoutSource)).toThrow();
+    expect(() => InvestmentReconciliationSchema.parse(withoutQuality)).toThrow();
+  });
+
   it("accepts zero holdings after a complete liquidation", () => {
     const zeroHoldings = {
       ...reconciliation,

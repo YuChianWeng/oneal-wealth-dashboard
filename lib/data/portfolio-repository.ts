@@ -181,6 +181,44 @@ function isTransaction(fm: Record<string, unknown>): boolean {
   return String(type ?? "").toLowerCase() === "transaction";
 }
 
+function tradeBusinessId(
+  trade: {
+    date: string;
+    settlementDate?: string;
+    symbol: string;
+    side: string;
+    shares: number;
+    price: number;
+    grossAmount?: number;
+    feeTax?: number;
+    netCashflow?: number;
+  },
+  fm: Record<string, unknown>,
+): string {
+  const orderId = String(
+    fm.orderId ?? fm["order-id"] ?? fm.order_id ?? "",
+  ).trim();
+  if (orderId) {
+    const broker = String(fm.broker ?? fm.Broker ?? "unknown")
+      .trim()
+      .toLowerCase();
+    return `order:${broker || "unknown"}:${orderId}`;
+  }
+
+  return [
+    "trade",
+    trade.date || "invalid-date",
+    trade.symbol,
+    trade.side,
+    trade.shares,
+    trade.price,
+    trade.grossAmount ?? "",
+    trade.feeTax ?? "",
+    trade.netCashflow ?? "",
+    trade.settlementDate ?? "",
+  ].join(":");
+}
+
 /**
  * Convert a raw transaction note into a validated TradeRecord.
  */
@@ -202,8 +240,7 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
     fm["settlement-date"],
     fm.settlement_date,
   );
-  const rawTrade = {
-    id: note.path,
+  const rawTradeWithoutId = {
     date: firstValidIsoDate(
       fm.tradeDate,
       fm["trade-date"],
@@ -227,6 +264,10 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
     strategy: fm.strategy ?? fm.Strategy ?? null,
     broker: fm.broker ?? fm.Broker ?? null,
     status: fm.status ?? fm.Status ?? null,
+  };
+  const rawTrade = {
+    id: tradeBusinessId(rawTradeWithoutId, fm),
+    ...rawTradeWithoutId,
   };
 
   try {
@@ -397,14 +438,13 @@ export function getTrades(symbol: string): Result<TradeRecord[], SourceError> {
     if (!base.toUpperCase().includes(safeSymbol)) continue;
 
     const note = readNote(f);
-    if (!note.ok) continue;
+    if (!note.ok) return err(note.error);
 
     if (!isTransaction(note.value.frontmatter)) continue;
 
     const parsed = parseTrade(note.value);
-    if (parsed.ok) {
-      results.push(parsed.value);
-    }
+    if (!parsed.ok) return err(parsed.error);
+    results.push(parsed.value);
   }
 
   return ok(results);
@@ -424,14 +464,13 @@ export function listAllTrades(): Result<TradeRecord[], SourceError> {
 
   for (const f of files.value) {
     const note = readNote(f);
-    if (!note.ok) continue;
+    if (!note.ok) return err(note.error);
 
     if (!isTransaction(note.value.frontmatter)) continue;
 
     const parsed = parseTrade(note.value);
-    if (parsed.ok) {
-      results.push(parsed.value);
-    }
+    if (!parsed.ok) return err(parsed.error);
+    results.push(parsed.value);
   }
 
   // Sort descending by date (newest first)

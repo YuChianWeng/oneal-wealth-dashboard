@@ -48,7 +48,7 @@ describe("investmentReconciliation", () => {
     );
     expect(pending).toEqual(
       expect.objectContaining({
-        id: "2026-07-13-2330.TW-sell",
+        id: "trade:2026-07-13:2330.TW:sell:5:1749:8745:2:8743:2026-07-15",
         settlementDate: "2026-07-15",
         effectiveCashAdjustment: 8_743,
         ageTradingDays: 0,

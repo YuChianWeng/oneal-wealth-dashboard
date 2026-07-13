@@ -36,6 +36,11 @@ export interface CashReconciliationInput {
   trades: readonly CashReconciliationTrade[];
 }
 
+export type InvestmentReconciliationCore = Omit<
+  InvestmentReconciliation,
+  "cashAsOfSource" | "cashAsOfQuality"
+>;
+
 function isIsoDate(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false;
@@ -114,7 +119,7 @@ function settlementOrder(
 
 export function computeInvestmentReconciliation(
   input: CashReconciliationInput,
-): InvestmentReconciliation {
+): InvestmentReconciliationCore {
   assertReconciliationInputs(input);
 
   const warnings: string[] = [];
@@ -187,12 +192,13 @@ export function computeInvestmentReconciliation(
 
     const inferredSettlementDate =
       settlementDate === null ? addTwseTradingDays(trade.tradeDate, 2) : null;
-    if (settlementDate === null) {
-      const settlementIssue = settlementDateWasProvided ? "invalid" : "missing";
+    if (settlementDate === null && inferredSettlementDate === null) {
       warnings.push(
-        inferredSettlementDate === null
-          ? `Trade ${tradeId}: settlementDate ${settlementIssue}; coverage unavailable`
-          : `Trade ${tradeId}: settlementDate ${settlementIssue}; coverage inferred as ${inferredSettlementDate}`,
+        `Trade ${tradeId}: settlementDate ${settlementDateWasProvided ? "invalid" : "missing"}; coverage unavailable`,
+      );
+    } else if (settlementDate === null && settlementDateWasProvided) {
+      warnings.push(
+        `Trade ${tradeId}: settlementDate invalid; coverage inferred as ${inferredSettlementDate}`,
       );
     }
     const cashCoverageDate = settlementDate ?? inferredSettlementDate;

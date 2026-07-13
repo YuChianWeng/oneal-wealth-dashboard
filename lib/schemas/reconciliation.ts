@@ -36,14 +36,12 @@ export const InvestmentReconciliationSchema = z
     valuationDate: date(),
     confirmedCash: amount(),
     cashAsOfDate: date(),
-    cashAsOfSource: z.string().min(1).optional(),
-    cashAsOfQuality: z
-      .enum([
+    cashAsOfSource: z.string().min(1),
+    cashAsOfQuality: z.enum([
         "confirmed-explicit-event",
         "inferred-from-balance-entry",
         "unavailable",
-      ])
-      .optional(),
+      ]),
     pendingTradeCashAdjustment: amount(),
     effectiveCashValue: amount(),
     holdingsMarketValue: amount(),

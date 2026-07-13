@@ -287,9 +287,9 @@ describe("computeInvestmentReconciliation", () => {
         effectiveCashAdjustment: 8_743,
       }),
     );
-    expect(result.warnings).toContain(
-      "Trade missing-tplus-one: settlementDate missing; coverage inferred as 2026-07-15",
-    );
+    expect(result.warnings).toEqual([
+      "Trade missing-tplus-one: settlement overdue as of 2026-07-16",
+    ]);
   });
 
   it("clears a missing-settlement trade only on inferred T+2", () => {
@@ -309,9 +309,7 @@ describe("computeInvestmentReconciliation", () => {
         effectiveCashAdjustment: 0,
       }),
     );
-    expect(result.warnings).toEqual([
-      "Trade missing-tplus-two: settlementDate missing; coverage inferred as 2026-07-15",
-    ]);
+    expect(result.warnings).toEqual([]);
   });
 
   it("marks a missing-settlement trade overdue after verified T+2", () => {
@@ -331,7 +329,6 @@ describe("computeInvestmentReconciliation", () => {
     );
     expect(result.warnings).toEqual([
       "Trade missing-settlement: settlement overdue as of 2026-07-16",
-      "Trade missing-settlement: settlementDate missing; coverage inferred as 2026-07-15",
     ]);
   });
 

@@ -22,12 +22,13 @@ def write_trade(
     *,
     trade_date: str,
     side: str,
-    net_cashflow: float,
+    net_cashflow: float | str,
     settlement_date: str | None = None,
+    settlement_key: str = "settlement_date",
     note_type: str = "transaction",
 ) -> None:
     settlement_line = (
-        f"settlement_date: '{settlement_date}'\n" if settlement_date else ""
+        f"{settlement_key}: '{settlement_date}'\n" if settlement_date else ""
     )
     (directory / filename).write_text(
         "---\n"
@@ -120,7 +121,7 @@ class PendingTradeCashAdjustmentTests(unittest.TestCase):
             self.assertEqual(adjustment, 8743)
             self.assertEqual(count, 1)
 
-    def test_ignores_future_invalid_and_non_transaction_notes(self) -> None:
+    def test_ignores_future_and_non_transaction_notes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             trades = Path(tmp)
             write_trade(
@@ -128,13 +129,6 @@ class PendingTradeCashAdjustmentTests(unittest.TestCase):
                 "future.md",
                 trade_date="2026-07-14",
                 side="sell",
-                net_cashflow=500,
-            )
-            write_trade(
-                trades,
-                "invalid-side.md",
-                trade_date="2026-07-13",
-                side="transfer",
                 net_cashflow=500,
             )
             write_trade(
@@ -151,6 +145,82 @@ class PendingTradeCashAdjustmentTests(unittest.TestCase):
                 )
             self.assertEqual(adjustment, 0)
             self.assertEqual(count, 0)
+
+    def test_fails_closed_on_invalid_side_and_cashflow(self) -> None:
+        for filename, side, cashflow in (
+            ("invalid-side.md", "transfer", 500),
+            ("invalid-cashflow.md", "sell", "not-a-number"),
+            ("zero-cashflow.md", "sell", 0),
+        ):
+            with self.subTest(filename=filename):
+                with tempfile.TemporaryDirectory() as tmp:
+                    trades = Path(tmp)
+                    write_trade(
+                        trades,
+                        filename,
+                        trade_date="2026-07-13",
+                        side=side,
+                        net_cashflow=cashflow,
+                    )
+                    with patch.object(snapshot, "TRANSACTIONS", trades):
+                        with self.assertRaises(ValueError):
+                            snapshot.pending_trade_cash_adjustment(
+                                "2026-07-12", "2026-07-13"
+                            )
+
+    def test_accepts_camel_case_settlement_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            trades = Path(tmp)
+            write_trade(
+                trades,
+                "camel-settlement.md",
+                trade_date="2026-07-13",
+                settlement_date="2026-07-15",
+                settlement_key="settlementDate",
+                side="sell",
+                net_cashflow=8743,
+            )
+            with patch.object(snapshot, "TRANSACTIONS", trades):
+                adjustment, count = snapshot.pending_trade_cash_adjustment(
+                    "2026-07-14", "2026-07-14"
+                )
+            self.assertEqual(adjustment, 8743)
+            self.assertEqual(count, 1)
+
+    def test_fails_closed_on_duplicate_business_transaction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            trades = Path(tmp)
+            for filename in ("original.md", "copied.md"):
+                write_trade(
+                    trades,
+                    filename,
+                    trade_date="2026-07-13",
+                    settlement_date="2026-07-15",
+                    side="sell",
+                    net_cashflow=8743,
+                )
+            with patch.object(snapshot, "TRANSACTIONS", trades):
+                with self.assertRaisesRegex(ValueError, "duplicate transaction"):
+                    snapshot.pending_trade_cash_adjustment(
+                        "2026-07-12", "2026-07-13"
+                    )
+
+    def test_validates_transactions_even_when_cash_snapshot_covers_them(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            trades = Path(tmp)
+            write_trade(
+                trades,
+                "covered-invalid.md",
+                trade_date="2026-07-01",
+                settlement_date="2026-07-03",
+                side="transfer",
+                net_cashflow=500,
+            )
+            with patch.object(snapshot, "TRANSACTIONS", trades):
+                with self.assertRaisesRegex(ValueError, "invalid side"):
+                    snapshot.pending_trade_cash_adjustment(
+                        "2026-07-12", "2026-07-13"
+                    )
 
     def test_side_normalizes_incorrect_cashflow_sign(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
