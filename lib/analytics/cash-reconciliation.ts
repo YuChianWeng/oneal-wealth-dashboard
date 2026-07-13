@@ -92,6 +92,12 @@ function assertReconciliationInputs(input: CashReconciliationInput): void {
   if (!Number.isFinite(input.holdingsMarketValue)) {
     throw new TypeError("holdingsMarketValue must be finite");
   }
+  if (input.holdingsMarketValue < 0) {
+    throw new TypeError("holdingsMarketValue must be nonnegative");
+  }
+  if (input.cashAsOfDate > input.valuationDate) {
+    throw new TypeError("cashAsOfDate cannot be after valuationDate");
+  }
 }
 
 function settlementOrder(
@@ -113,8 +119,23 @@ export function computeInvestmentReconciliation(
   const warnings: string[] = [];
   const settlements: PendingSettlement[] = [];
 
+  const tradeIdCounts = new Map<string, number>();
   for (const trade of input.trades) {
     const tradeId = warningTradeId(trade);
+    tradeIdCounts.set(tradeId, (tradeIdCounts.get(tradeId) ?? 0) + 1);
+  }
+  const duplicateTradeIds = new Set(
+    [...tradeIdCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([tradeId]) => tradeId),
+  );
+  for (const tradeId of duplicateTradeIds) {
+    warnings.push(`Trade ${tradeId}: duplicate trade id; all copies excluded`);
+  }
+
+  for (const trade of input.trades) {
+    const tradeId = warningTradeId(trade);
+    if (duplicateTradeIds.has(tradeId)) continue;
     if (!isIsoDate(trade.tradeDate)) {
       warnings.push(
         `Trade ${tradeId}: invalid tradeDate (${String(trade.tradeDate)})`,
@@ -155,11 +176,22 @@ export function computeInvestmentReconciliation(
       warnings.push(`Trade ${tradeId}: netCashflow sign does not match side`);
     }
 
-    const coveredByCashSnapshot = input.cashAsOfDate >= trade.tradeDate;
+    const calendarAge = twseTradingDayAge(trade.tradeDate, input.valuationDate);
+    const ageTradingDays = calendarAge ?? fallbackAge(trade);
+    if (ageTradingDays === null) {
+      warnings.push(`Trade ${tradeId}: trading-day age unavailable`);
+    }
+
+    const cashCoverageDate = settlementDate ?? trade.tradeDate;
+    const coveredByCashSnapshot = input.cashAsOfDate >= cashCoverageDate;
+    const overdueByDate =
+      settlementDate !== null && settlementDate < input.valuationDate;
+    const overdueByAge =
+      settlementDate === null &&
+      ageTradingDays !== null &&
+      ageTradingDays > 2;
     const overdue =
-      !coveredByCashSnapshot &&
-      settlementDate !== null &&
-      settlementDate < input.valuationDate;
+      !coveredByCashSnapshot && (overdueByDate || overdueByAge);
     const status: PendingSettlement["status"] = coveredByCashSnapshot
       ? "covered-by-cash-snapshot"
       : overdue
@@ -169,13 +201,6 @@ export function computeInvestmentReconciliation(
       warnings.push(
         `Trade ${tradeId}: settlement overdue as of ${input.valuationDate}`,
       );
-    }
-
-    const calendarAge = twseTradingDayAge(trade.tradeDate, input.valuationDate);
-    const ageTradingDays = calendarAge ?? fallbackAge(trade);
-    if (ageTradingDays === null) {
-      warnings.push(`Trade ${tradeId}: trading-day age unavailable`);
-      continue;
     }
 
     settlements.push({

@@ -24,7 +24,7 @@ export const PendingSettlementSchema = z
     settlementDate: date().nullable(),
     netCashflow: amount(),
     effectiveCashAdjustment: amount(),
-    ageTradingDays: z.number().int().nonnegative(),
+    ageTradingDays: z.number().int().nonnegative().nullable(),
     status: z.enum(["pending", "overdue", "covered-by-cash-snapshot"]),
   })
   .strict();
@@ -36,6 +36,14 @@ export const InvestmentReconciliationSchema = z
     valuationDate: date(),
     confirmedCash: amount(),
     cashAsOfDate: date(),
+    cashAsOfSource: z.string().min(1).optional(),
+    cashAsOfQuality: z
+      .enum([
+        "confirmed-explicit-event",
+        "inferred-from-balance-entry",
+        "unavailable",
+      ])
+      .optional(),
     pendingTradeCashAdjustment: amount(),
     effectiveCashValue: amount(),
     holdingsMarketValue: amount(),

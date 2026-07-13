@@ -29,6 +29,17 @@ const trade = (
 });
 
 describe("computeInvestmentReconciliation", () => {
+  it("returns a clean reconciled state when there are no trades", () => {
+    const result = computeInvestmentReconciliation(baseInput());
+
+    expect(result.pendingTradeCashAdjustment).toBe(0);
+    expect(result.effectiveCashValue).toBe(44_847);
+    expect(result.strategyValue).toBe(193_992.7);
+    expect(result.pendingSettlements).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(result.status).toBe("reconciled");
+  });
+
   it("reconciles the 2026-07-13 sale regression without changing confirmed cash", () => {
     const result = computeInvestmentReconciliation(
       baseInput({ trades: [trade()] }),
@@ -140,25 +151,54 @@ describe("computeInvestmentReconciliation", () => {
     ).toEqual([1, 1, 0]);
   });
 
-  it("marks a trade covered and removes its adjustment after a newer cash snapshot", () => {
-    const result = computeInvestmentReconciliation(
+  it("marks a trade covered only when cash is confirmed on or after settlement", () => {
+    const beforeSettlement = computeInvestmentReconciliation(
       baseInput({
         valuationDate: "2026-07-14",
         cashAsOfDate: "2026-07-14",
         trades: [trade()],
       }),
     );
+    expect(beforeSettlement.pendingTradeCashAdjustment).toBe(8_743);
+    expect(beforeSettlement.pendingSettlements[0]).toEqual(
+      expect.objectContaining({
+        id: "trade-2330-sell",
+        effectiveCashAdjustment: 8_743,
+        status: "pending",
+      }),
+    );
 
-    expect(result.pendingTradeCashAdjustment).toBe(0);
-    expect(result.effectiveCashValue).toBe(44_847);
-    expect(result.pendingSettlements).toEqual([
+    const onSettlement = computeInvestmentReconciliation(
+      baseInput({
+        valuationDate: "2026-07-15",
+        cashAsOfDate: "2026-07-15",
+        trades: [trade()],
+      }),
+    );
+    expect(onSettlement.pendingTradeCashAdjustment).toBe(0);
+    expect(onSettlement.effectiveCashValue).toBe(44_847);
+    expect(onSettlement.pendingSettlements).toEqual([
       expect.objectContaining({
         id: "trade-2330-sell",
         effectiveCashAdjustment: 0,
         status: "covered-by-cash-snapshot",
       }),
     ]);
-    expect(result.status).toBe("reconciled");
+    expect(onSettlement.status).toBe("reconciled");
+  });
+
+  it("excludes every record sharing a duplicate trade id instead of double-counting", () => {
+    const duplicate = trade({ id: "duplicate-trade" });
+    const result = computeInvestmentReconciliation(
+      baseInput({ trades: [duplicate, { ...duplicate }] }),
+    );
+
+    expect(result.pendingTradeCashAdjustment).toBe(0);
+    expect(result.pendingSettlements).toEqual([]);
+    expect(result.status).toBe("attention");
+    expect(result.warnings).toEqual([
+      "Trade duplicate-trade: duplicate trade id; all copies excluded",
+    ]);
   });
 
   it("warns on missing, zero, and invalid cashflow without counting the trades", () => {
@@ -196,6 +236,68 @@ describe("computeInvestmentReconciliation", () => {
     expect(result.warnings).toEqual([
       "Trade invalid-date: invalid tradeDate (2026-02-30)",
     ]);
+  });
+
+  it("preserves cash arithmetic when verified calendar age is unavailable", () => {
+    const result = computeInvestmentReconciliation(
+      baseInput({
+        valuationDate: "2027-01-05",
+        cashAsOfDate: "2027-01-01",
+        trades: [
+          trade({
+            id: "outside-calendar",
+            tradeDate: "2027-01-04",
+            settlementDate: "2027-01-06",
+            netCashflow: 1_000,
+          }),
+        ],
+      }),
+    );
+
+    expect(result.pendingTradeCashAdjustment).toBe(1_000);
+    expect(result.effectiveCashValue).toBe(45_847);
+    expect(result.pendingSettlements[0]).toEqual(
+      expect.objectContaining({
+        id: "outside-calendar",
+        ageTradingDays: null,
+        effectiveCashAdjustment: 1_000,
+      }),
+    );
+    expect(result.status).toBe("attention");
+    expect(result.warnings).toEqual([
+      "Trade outside-calendar: trading-day age unavailable",
+    ]);
+  });
+
+  it("marks a missing-settlement trade overdue after verified T+2", () => {
+    const result = computeInvestmentReconciliation(
+      baseInput({
+        valuationDate: "2026-07-16",
+        trades: [trade({ id: "missing-settlement", settlementDate: null })],
+      }),
+    );
+
+    expect(result.pendingSettlements[0]).toEqual(
+      expect.objectContaining({
+        id: "missing-settlement",
+        ageTradingDays: 3,
+        status: "overdue",
+      }),
+    );
+    expect(result.warnings).toEqual([
+      "Trade missing-settlement: settlement overdue as of 2026-07-16",
+    ]);
+  });
+
+  it("rejects impossible holdings and future cash snapshots", () => {
+    expect(() =>
+      computeInvestmentReconciliation(baseInput({ holdingsMarketValue: -1 })),
+    ).toThrow("holdingsMarketValue must be nonnegative");
+    expect(() =>
+      computeInvestmentReconciliation(
+        baseInput({ cashAsOfDate: "2026-07-14" }),
+      ),
+    ).toThrow("cashAsOfDate cannot be after valuationDate");
   });
 
   it("accepts zero holdings after complete liquidation", () => {

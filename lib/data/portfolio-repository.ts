@@ -197,6 +197,11 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
     );
   }
 
+  const settlementDate = firstValidIsoDate(
+    fm.settlementDate,
+    fm["settlement-date"],
+    fm.settlement_date,
+  );
   const rawTrade = {
     id: note.path,
     date: firstValidIsoDate(
@@ -205,6 +210,7 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
       fm.trade_date,
       fm.date,
     ),
+    ...(settlementDate ? { settlementDate } : {}),
     symbol,
     name: String(fm.name ?? fm.Name ?? symbol),
     side: String(fm.side ?? fm.Side ?? "").toLowerCase(),

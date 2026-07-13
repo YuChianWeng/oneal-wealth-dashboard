@@ -95,6 +95,7 @@ describe("TradeRecordSchema", () => {
   const valid = {
     id: "txn-001",
     date: "2026-07-10",
+    settlementDate: "2026-07-14",
     symbol: "2330.TW",
     name: "TSMC",
     side: "buy" as const,

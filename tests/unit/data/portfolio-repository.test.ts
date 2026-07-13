@@ -138,10 +138,10 @@ describe("getTrades", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected Ok");
 
-    expect(result.value).toHaveLength(2);
+    expect(result.value).toHaveLength(3);
 
     const sides = result.value.map((t) => t.side).sort();
-    expect(sides).toEqual(["buy", "sell"]);
+    expect(sides).toEqual(["buy", "sell", "sell"]);
 
     // Check buy trade
     const buy = result.value.find((t) => t.side === "buy");
@@ -151,12 +151,23 @@ describe("getTrades", () => {
     expect(buy!.grossAmount).toBe(285000);
     expect(buy!.feeTax).toBe(405);
 
-    // Check sell trade
-    const sell = result.value.find((t) => t.side === "sell");
+    // Check historical sell trade
+    const sell = result.value.find((t) => t.date === "2026-07-05");
     expect(sell).toBeDefined();
     expect(sell!.shares).toBe(200);
     expect(sell!.price).toBe(595);
     expect(sell!.netCashflow).toBe(118830);
+    expect(sell!.settlementDate).toBe("2026-07-07");
+
+    const pendingSell = result.value.find((t) => t.date === "2026-07-13");
+    expect(pendingSell).toEqual(
+      expect.objectContaining({
+        side: "sell",
+        shares: 5,
+        netCashflow: 8743,
+        settlementDate: "2026-07-15",
+      }),
+    );
   });
 
   it("returns empty array for symbol with no trades", () => {
@@ -184,10 +195,11 @@ describe("getDailySnapshots", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected Ok");
 
-    // Should include 2026-07-01 and 2026-07-07, but not 2026-06-30
-    expect(result.value).toHaveLength(2);
+    // Should include 2026-07-01, 2026-07-07, and reconciliation fixture 2026-07-13.
+    expect(result.value).toHaveLength(3);
     expect(result.value[0].date).toBe("2026-07-01");
     expect(result.value[1].date).toBe("2026-07-07");
+    expect(result.value[2].date).toBe("2026-07-13");
   });
 
   it("returns all snapshots when since is early enough", () => {
@@ -195,10 +207,11 @@ describe("getDailySnapshots", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected Ok");
 
-    expect(result.value).toHaveLength(3);
+    expect(result.value).toHaveLength(4);
     expect(result.value[0].date).toBe("2026-06-30");
     expect(result.value[1].date).toBe("2026-07-01");
     expect(result.value[2].date).toBe("2026-07-07");
+    expect(result.value[3].date).toBe("2026-07-13");
   });
 
   it("returns empty array when no snapshots match", () => {

@@ -25,6 +25,8 @@ const reconciliation = {
   valuationDate: "2026-07-13",
   confirmedCash: 44_847,
   cashAsOfDate: "2026-07-12",
+  cashAsOfSource: "weekly-balance-md-cron",
+  cashAsOfQuality: "confirmed-explicit-event" as const,
   pendingTradeCashAdjustment: 8_743,
   effectiveCashValue: 53_590,
   holdingsMarketValue: 149_145.7,
@@ -39,6 +41,15 @@ describe("PendingSettlementSchema", () => {
     expect(PendingSettlementSchema.parse(pendingSettlement)).toEqual(
       pendingSettlement,
     );
+  });
+
+  it("accepts unavailable trading-day age without dropping the settlement", () => {
+    expect(
+      PendingSettlementSchema.parse({
+        ...pendingSettlement,
+        ageTradingDays: null,
+      }).ageTradingDays,
+    ).toBeNull();
   });
 
   it("rejects extra fields", () => {

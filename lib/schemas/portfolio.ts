@@ -76,6 +76,7 @@ export const TradeRecordSchema = z
   .object({
     id: z.string().min(1),
     date: dateStr(),
+    settlementDate: dateStr().nullable().optional(),
     symbol: z.string().min(1),
     name: z.string().min(1),
     side: z.enum(["buy", "sell"]),
