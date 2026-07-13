@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 import tempfile
+import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -179,6 +181,32 @@ class PayloadTests(unittest.TestCase):
     def test_atomic_replace_failure_preserves_old_file_and_removes_temp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "0050.TW.json"
+            fetched_at = datetime(2026, 7, 13, 14, 10, tzinfo=ZoneInfo("Asia/Taipei"))
+            last_good = target.build_payload(
+                "0050.TW",
+                [{"date": "2026-01-22", "close": 71.8, "adjustedClose": 71.8}],
+                fetched_at=fetched_at,
+                source_version="test",
+            )
+            path.write_text(json.dumps(last_good), encoding="utf-8")
+            payload = target.build_payload(
+                "0050.TW",
+                [
+                    last_good["points"][0],
+                    {"date": "2026-01-23", "close": 72.1, "adjustedClose": 72.1},
+                ],
+                fetched_at=fetched_at,
+                source_version="test",
+            )
+            with patch.object(target.os, "replace", side_effect=OSError("replace failed")):
+                with self.assertRaises(OSError):
+                    target.atomic_write_json(path, payload)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), last_good)
+            self.assertFalse(any(path.parent.glob(f".{path.name}.*.tmp")))
+
+    def test_atomic_write_aborts_when_existing_history_cannot_be_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "0050.TW.json"
             path.write_text('{"last":"good"}\n', encoding="utf-8")
             payload = target.build_payload(
                 "0050.TW",
@@ -186,11 +214,28 @@ class PayloadTests(unittest.TestCase):
                 fetched_at=datetime(2026, 7, 13, 14, 10, tzinfo=ZoneInfo("Asia/Taipei")),
                 source_version="test",
             )
-            with patch.object(target.os, "replace", side_effect=OSError("replace failed")):
+            with patch.object(Path, "read_text", side_effect=OSError("read failed")):
                 with self.assertRaises(OSError):
                     target.atomic_write_json(path, payload)
             self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"last": "good"})
-            self.assertFalse(any(path.parent.glob(f".{path.name}.*.tmp")))
+
+    def test_fetch_history_requests_provider_maximum_history(self) -> None:
+        download = Mock(return_value=pd.DataFrame())
+        fake_yfinance = types.SimpleNamespace(download=download, __version__="test")
+        with patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            frame, version = target.fetch_history("^TWII")
+
+        self.assertTrue(frame.empty)
+        self.assertEqual(version, "test")
+        download.assert_called_once_with(
+            "^TWII",
+            period="max",
+            interval="1d",
+            auto_adjust=False,
+            actions=True,
+            progress=False,
+            threads=False,
+        )
 
     def test_atomic_write_round_trips_valid_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

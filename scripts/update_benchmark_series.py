@@ -194,26 +194,24 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     """Validate then atomically replace `path`, preserving the last good file on error."""
     validate_payload(payload)
     if path.exists():
-        try:
-            existing = json.loads(path.read_text(encoding="utf-8"))
-            validate_payload(existing)
-        except (OSError, json.JSONDecodeError, ValueError):
-            existing = None
-        if existing is not None and existing.get("symbol") == payload.get("symbol"):
-            old_points = existing["points"]
-            new_points = payload["points"]
-            if new_points[-1]["date"] < old_points[-1]["date"]:
-                raise ValueError("benchmark provider history is older than last good file")
-            if new_points[0]["date"] > old_points[0]["date"]:
-                raise ValueError("benchmark provider history is truncated")
-            old_dates = {point["date"] for point in old_points}
-            new_dates = {point["date"] for point in new_points}
-            missing_dates = sorted(old_dates - new_dates)
-            if missing_dates:
-                raise ValueError(
-                    "benchmark provider history is missing previously stored dates: "
-                    + ", ".join(missing_dates[:5])
-                )
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        validate_payload(existing)
+        if existing.get("symbol") != payload.get("symbol"):
+            raise ValueError("existing benchmark symbol does not match candidate")
+        old_points = existing["points"]
+        new_points = payload["points"]
+        if new_points[-1]["date"] < old_points[-1]["date"]:
+            raise ValueError("benchmark provider history is older than last good file")
+        if new_points[0]["date"] > old_points[0]["date"]:
+            raise ValueError("benchmark provider history is truncated")
+        old_dates = {point["date"] for point in old_points}
+        new_dates = {point["date"] for point in new_points}
+        missing_dates = sorted(old_dates - new_dates)
+        if missing_dates:
+            raise ValueError(
+                "benchmark provider history is missing previously stored dates: "
+                + ", ".join(missing_dates[:5])
+            )
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path: Path | None = None
     try:
@@ -244,7 +242,7 @@ def fetch_history(symbol: str) -> tuple[pd.DataFrame, str]:
         raise RuntimeError("yfinance is required to refresh benchmarks") from exc
     frame = yf.download(
         symbol,
-        start="2000-01-01",
+        period="max",
         interval="1d",
         auto_adjust=False,
         actions=True,
