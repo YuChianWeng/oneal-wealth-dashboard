@@ -22,6 +22,11 @@ export const stubNavSections: NavSection[] = [
     items: [
       { label: "持倉總覽", href: "/portfolio", icon: null },
       {
+        label: "投資對帳",
+        href: "/portfolio/reconciliation",
+        icon: null,
+      },
+      {
         label: "個股研究",
         href: "/portfolio/research",
         icon: null,
