@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import {
   LineChart as RechartsLine,
@@ -78,7 +79,21 @@ function LoanInvestmentTooltip({
   );
 }
 
-function LoanInvestmentPerformanceCard({
+export function signedTwd(value: number): string {
+  if (value > 0) return `+${formatTWD(value)}`;
+  if (value < 0) return `−${formatTWD(Math.abs(value))}`;
+  return formatTWD(0);
+}
+
+function cashQualityLabel(
+  quality: NonNullable<GrowthResponse["loanInvestment"]>["points"][number]["cashAsOfQuality"],
+): string {
+  if (quality === "confirmed-explicit-event") return "明確確認";
+  if (quality === "inferred-from-balance-entry") return "舊資料推定";
+  return "無法確認";
+}
+
+export function LoanInvestmentPerformanceCard({
   performance,
 }: {
   performance: NonNullable<GrowthResponse["loanInvestment"]>;
@@ -143,6 +158,67 @@ function LoanInvestmentPerformanceCard({
           }
         />
       </div>
+
+      <div className="mt-4 rounded-ds-md border border-dashboard-border bg-dashboard-bg/40 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-[13px] font-semibold text-dashboard-text">
+              策略資產對帳拆解
+            </h3>
+            <p className="mt-0.5 text-[10.5px] text-dashboard-faint">
+              已確認現金 ＋ 未交割調整 ＝ 有效現金；再加持股市值。
+            </p>
+          </div>
+          <Link
+            href="/portfolio/reconciliation"
+            className="text-[11px] font-medium text-dashboard-accent hover:underline"
+          >
+            前往投資對帳中心
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <PolicyPerformanceMetric
+            label="已確認現金"
+            value={
+              latest.confirmedCash === null
+                ? "—"
+                : formatTWD(latest.confirmedCash)
+            }
+          />
+          <PolicyPerformanceMetric
+            label="未交割調整"
+            value={signedTwd(latest.pendingTradeCashAdjustment)}
+            tone={
+              latest.pendingTradeCashAdjustment >= 0 ? "positive" : "negative"
+            }
+          />
+          <PolicyPerformanceMetric
+            label="有效現金"
+            value={
+              latest.effectiveCashValue === null
+                ? "—"
+                : formatTWD(latest.effectiveCashValue)
+            }
+          />
+          <PolicyPerformanceMetric
+            label="持股市值"
+            value={
+              latest.brokerageMarketValue === null
+                ? "—"
+                : formatTWD(latest.brokerageMarketValue)
+            }
+          />
+        </div>
+        <p className="mt-3 text-[10.5px] text-dashboard-faint">
+          {latest.cashAsOfDate
+            ? `截至 ${latest.cashAsOfDate} · ${cashQualityLabel(latest.cashAsOfQuality)}`
+            : "現金確認日期 unavailable"}
+          {latest.pendingTradeCount > 0
+            ? ` · ${latest.pendingTradeCount} 筆未交割交易`
+            : ""}
+        </p>
+      </div>
+
       <div className="mt-4 h-[300px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <RechartsLine
@@ -191,7 +267,7 @@ function LoanInvestmentPerformanceCard({
       </div>
       <p className="mt-3 text-[11px] leading-relaxed text-dashboard-faint">
         2026-06-20 以 NT$200,000 建立起始點；正式帳戶觀測從 2026-06-21
-        起。策略資產 = 國泰投資交割戶 + 股票市值；TAIEX
+        起。策略資產 = 有效現金（已確認現金 + 未交割調整）+ 股票市值；TAIEX
         使用每個觀測日當日或之前最近的可用收盤價。
       </p>
     </Card>
