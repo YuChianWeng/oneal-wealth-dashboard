@@ -44,7 +44,12 @@ function research(overrides: Partial<ResearchSummary> = {}): ResearchSummary {
 describe("buildPortfolioResearchView", () => {
   it("enriches position metadata from matching research", () => {
     const summary = research();
-    const result = buildPortfolioResearchView([position()], {
+    const original = position({
+      sector: "Legacy Sector",
+      theme: "Legacy Theme",
+      conviction: 1,
+    });
+    const result = buildPortfolioResearchView([original], {
       summaries: new Map([["2330.TW", summary]]),
       invalid: [],
     });
@@ -54,6 +59,11 @@ describe("buildPortfolioResearchView", () => {
       sector: "半導體",
       theme: "AI / HPC",
       conviction: 5,
+    });
+    expect(original).toMatchObject({
+      sector: "Legacy Sector",
+      theme: "Legacy Theme",
+      conviction: 1,
     });
     expect(result.researchSummaries).toEqual([summary]);
     expect(result.invalidResearchSymbols).toEqual([]);

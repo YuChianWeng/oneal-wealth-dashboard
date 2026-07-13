@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { toSafeResponse } from "@/lib/errors";
 import { listOpenPositions, getDailySnapshots } from "@/lib/data/portfolio-repository";
+import { listResearchSummariesForSymbols } from "@/lib/data/research-repository";
+import { buildPortfolioResearchView } from "@/lib/data/portfolio-research-view";
 import { monthlySummary } from "@/lib/data/finance-repository";
 import { computeAllocationBreakdown } from "@/lib/analytics/allocation";
 import {
@@ -62,7 +64,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // ------------------------------------------------------------------
 
     const positionsResult = listOpenPositions();
-    const positions = positionsResult.ok ? positionsResult.value : [];
+    if (!positionsResult.ok) throw positionsResult.error;
+    const positions = positionsResult.value;
+
+    const researchResult = listResearchSummariesForSymbols(
+      positions.map((position) => position.symbol),
+    );
+    if (!researchResult.ok) throw researchResult.error;
+    const researchView = buildPortfolioResearchView(
+      positions,
+      researchResult.value,
+    );
 
     // Allocation (uses sibling's computeAllocationBreakdown)
     const allocation = computeAllocationBreakdown(positions);
@@ -110,9 +122,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       totalPortfolioValue,
     });
 
-    // Insights (uses sibling's generateInsights with InsightContext)
+    // Insights use the same research-enriched view as /api/insights.
     const insights = generateInsights({
-      positions,
+      positions: researchView.positions,
+      researchSummaries: researchView.researchSummaries,
+      invalidResearchSymbols: researchView.invalidResearchSymbols,
       now: now.toISOString(),
     });
 

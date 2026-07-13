@@ -30,6 +30,7 @@ import {
   getResearchSummary,
   listResearchSummariesForSymbols,
 } from "@/lib/data/research-repository";
+import * as vaultReader from "@/lib/data/vault-reader";
 
 // ---------------------------------------------------------------------------
 // getResearchSummary
@@ -129,6 +130,23 @@ describe("getResearchSummary", () => {
 // ---------------------------------------------------------------------------
 
 describe("listResearchSummariesForSymbols", () => {
+  it("lists the stocks directory once for a deduplicated batch", () => {
+    const listNotes = vi.spyOn(vaultReader, "listNotes");
+    try {
+      const result = listResearchSummariesForSymbols([
+        "2330.TW",
+        "0050.TW",
+        "2330.tw",
+      ]);
+
+      expect(result.ok).toBe(true);
+      expect(listNotes).toHaveBeenCalledTimes(1);
+      expect(listNotes).toHaveBeenCalledWith("Trading/Stocks");
+    } finally {
+      listNotes.mockRestore();
+    }
+  });
+
   it("indexes multiple requested symbols in one result", () => {
     const result = listResearchSummariesForSymbols([
       "2330.TW",
@@ -156,6 +174,50 @@ describe("listResearchSummariesForSymbols", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected Ok");
     expect(result.value.summaries.has("2330.TW")).toBe(true);
+  });
+
+  it("normalizes a Yahoo .TWO alias supplied only by quote_symbol", () => {
+    const result = listResearchSummariesForSymbols(["3004.TW"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected Ok");
+    expect(result.value.summaries.get("3004.TW")?.name).toBe(
+      "Quote Alias Only",
+    );
+  });
+
+  it("marks wrong note type as invalid instead of valid or missing", () => {
+    const result = listResearchSummariesForSymbols(["3000.TW"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected Ok");
+    expect(result.value.summaries.size).toBe(0);
+    expect(result.value.invalid).toEqual([
+      { symbol: "3000.TW", code: "VAULT_RESEARCH_WRONG_TYPE" },
+    ]);
+  });
+
+  it("marks duplicate notes as invalid instead of choosing by directory order", () => {
+    const result = listResearchSummariesForSymbols(["3001.TW"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected Ok");
+    expect(result.value.summaries.size).toBe(0);
+    expect(result.value.invalid).toEqual([
+      { symbol: "3001.TW", code: "VAULT_DUPLICATE_RESEARCH" },
+    ]);
+  });
+
+  it("marks conflicting filename and frontmatter identities invalid", () => {
+    const result = listResearchSummariesForSymbols(["3002.TW", "3003.TW"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected Ok");
+    expect(result.value.summaries.size).toBe(0);
+    expect(result.value.invalid).toEqual([
+      { symbol: "3002.TW", code: "VAULT_RESEARCH_IDENTITY_CONFLICT" },
+      { symbol: "3003.TW", code: "VAULT_RESEARCH_IDENTITY_CONFLICT" },
+    ]);
   });
 
   it("reports an invalid matching note separately from a missing note", () => {

@@ -157,6 +157,23 @@ describe("GET /api/insights", () => {
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
   });
 
+  it("returns a safe 500 when the research repository is unavailable", async () => {
+    mockListOpenPositions.mockReturnValue(ok([]));
+    mockListResearchSummariesForSymbols.mockReturnValue({
+      ok: false,
+      error: new Error("secret vault path /home/ubuntu/ObsidianVault"),
+    });
+
+    const response = await GET();
+    expect(response.status).toBe(500);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+
+    const body = await response.json();
+    expect(body.version).toBe(1);
+    expect(body.error.message).toBe("Internal Server Error");
+    expect(JSON.stringify(body)).not.toContain("/home/");
+  });
+
   it("does not leak stack traces in error responses", async () => {
     // Force an error by having listOpenPositions throw
     mockListOpenPositions.mockImplementation(() => {
@@ -165,8 +182,10 @@ describe("GET /api/insights", () => {
 
     const response = await GET();
     expect(response.status).toBe(500);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
 
     const body = await response.json();
+    expect(body.version).toBe(1);
     expect(body.error.message).toBe("Internal Server Error");
     expect(JSON.stringify(body)).not.toContain("/home/");
     expect(JSON.stringify(body)).not.toContain("secret");

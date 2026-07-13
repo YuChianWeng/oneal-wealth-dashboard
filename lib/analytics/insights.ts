@@ -29,7 +29,7 @@ import { concentrationRisk } from "./financial-health";
 // ---------------------------------------------------------------------------
 
 /** Current insight version — bump when rule logic changes materially. */
-export const INSIGHT_VERSION = "1.0";
+export const INSIGHT_VERSION = "1.1";
 
 /** Stale price threshold: prices older than this many days trigger a warning. */
 const STALE_PRICE_DAYS = 1;
@@ -156,12 +156,19 @@ function checkStalePrices(
 
 function checkMissingRationale(
   positions: PositionSummary[] | undefined,
+  invalidResearchSymbols: string[] | undefined,
 ): Insight[] {
   if (!positions || positions.length === 0) return [];
 
-  // A position without conviction suggests missing research/trade rationale
+  const invalidSymbols = new Set(
+    (invalidResearchSymbols ?? []).map((symbol) => symbol.toUpperCase()),
+  );
+  // A position without conviction suggests missing research/trade rationale.
+  // Invalid research is handled by its own rule; do not infer metadata gaps
+  // from a note that could not be parsed.
   const missing: PositionSummary[] = positions.filter(
-    (p) => p.conviction == null,
+    (p) =>
+      p.conviction == null && !invalidSymbols.has(p.symbol.toUpperCase()),
   );
 
   if (missing.length === 0) return [];
@@ -256,11 +263,18 @@ function checkStaleResearch(
 
 function checkMissingCategories(
   positions: PositionSummary[] | undefined,
+  invalidResearchSymbols: string[] | undefined,
 ): Insight[] {
   if (!positions || positions.length === 0) return [];
 
-  const missingSector = positions.filter((p) => !p.sector?.trim());
-  const missingTheme = positions.filter((p) => !p.theme?.trim());
+  const invalidSymbols = new Set(
+    (invalidResearchSymbols ?? []).map((symbol) => symbol.toUpperCase()),
+  );
+  const validPositions = positions.filter(
+    (position) => !invalidSymbols.has(position.symbol.toUpperCase()),
+  );
+  const missingSector = validPositions.filter((p) => !p.sector?.trim());
+  const missingTheme = validPositions.filter((p) => !p.theme?.trim());
 
   const insights: Insight[] = [];
 
@@ -340,10 +354,12 @@ function checkMissingResearchNotes(
   researchSummaries: ResearchSummary[] | undefined,
   invalidResearchSymbols: string[] | undefined,
 ): Insight[] {
-  if (!positions || positions.length === 0) return [];
+  if (!positions || positions.length === 0 || researchSummaries === undefined) {
+    return [];
+  }
 
   const researchSymbols = new Set(
-    (researchSummaries ?? []).map((r) => r.symbol.toUpperCase()),
+    researchSummaries.map((r) => r.symbol.toUpperCase()),
   );
   const invalidSymbols = new Set(
     (invalidResearchSymbols ?? []).map((symbol) => symbol.toUpperCase()),
@@ -415,10 +431,10 @@ export function generateInsights(ctx: InsightContext): Insight[] {
 
   const allInsights: Insight[] = [
     ...checkStalePrices(positions, now),
-    ...checkMissingRationale(positions),
+    ...checkMissingRationale(positions, invalidResearchSymbols),
     ...checkHighConcentration(positions),
     ...checkStaleResearch(researchSummaries, now),
-    ...checkMissingCategories(positions),
+    ...checkMissingCategories(positions, invalidResearchSymbols),
     ...checkInvalidResearchNotes(positions, invalidResearchSymbols),
     ...checkMissingResearchNotes(
       positions,

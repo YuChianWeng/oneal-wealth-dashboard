@@ -191,14 +191,23 @@ export function listResearchSummariesForSymbols(
   const files = listNotes(STOCKS_DIR);
   if (!files.ok) return files;
 
-  const parsedBySymbol = new Map<string, ResearchSummary>();
+  const candidatesBySymbol = new Map<string, RawNote[]>();
+  const candidateCountBySymbol = new Map<string, number>();
   const invalidBySymbol = new Map<string, InvalidResearchNote>();
+
+  const registerCandidate = (symbol: string) => {
+    candidateCountBySymbol.set(
+      symbol,
+      (candidateCountBySymbol.get(symbol) ?? 0) + 1,
+    );
+  };
 
   for (const file of files.value) {
     const pathSymbol = symbolFromPath(file);
     const noteResult = readNote(file);
     if (!noteResult.ok) {
-      if (requestedSet.has(pathSymbol) && !parsedBySymbol.has(pathSymbol)) {
+      if (requestedSet.has(pathSymbol)) {
+        registerCandidate(pathSymbol);
         invalidBySymbol.set(pathSymbol, {
           symbol: pathSymbol,
           code: noteResult.error.code,
@@ -207,30 +216,71 @@ export function listResearchSummariesForSymbols(
       continue;
     }
 
-    const matchedSymbol = requested.find((symbol) =>
-      noteSymbols(noteResult.value).has(symbol),
+    const identitySymbols = new Set(
+      [...noteSymbols(noteResult.value)].filter((symbol) =>
+        /^\d{4,6}\.TW$/.test(symbol),
+      ),
     );
-    if (!matchedSymbol || parsedBySymbol.has(matchedSymbol)) continue;
+    const matchedSymbols = requested.filter((symbol) =>
+      identitySymbols.has(symbol),
+    );
+    if (matchedSymbols.length === 0) continue;
 
-    const parsed = parseResearchSummary(noteResult.value, matchedSymbol);
-    if (parsed.ok) {
-      parsedBySymbol.set(matchedSymbol, parsed.value);
-      invalidBySymbol.delete(matchedSymbol);
-    } else {
-      invalidBySymbol.set(matchedSymbol, {
-        symbol: matchedSymbol,
-        code: parsed.error.code,
-      });
+    for (const symbol of matchedSymbols) registerCandidate(symbol);
+
+    if (identitySymbols.size > 1) {
+      for (const symbol of matchedSymbols) {
+        invalidBySymbol.set(symbol, {
+          symbol,
+          code: "VAULT_RESEARCH_IDENTITY_CONFLICT",
+        });
+      }
+      continue;
+    }
+
+    const noteType = String(noteResult.value.frontmatter.type ?? "")
+      .trim()
+      .toLowerCase();
+    if (noteType !== "stock-note") {
+      for (const symbol of matchedSymbols) {
+        invalidBySymbol.set(symbol, {
+          symbol,
+          code: "VAULT_RESEARCH_WRONG_TYPE",
+        });
+      }
+      continue;
+    }
+
+    for (const symbol of matchedSymbols) {
+      const candidates = candidatesBySymbol.get(symbol) ?? [];
+      candidates.push(noteResult.value);
+      candidatesBySymbol.set(symbol, candidates);
     }
   }
 
   const summaries = new Map<string, ResearchSummary>();
   const invalid: InvalidResearchNote[] = [];
   for (const symbol of requested) {
-    const summary = parsedBySymbol.get(symbol);
-    if (summary) summaries.set(symbol, summary);
-    const invalidNote = invalidBySymbol.get(symbol);
-    if (invalidNote && !summary) invalid.push(invalidNote);
+    if ((candidateCountBySymbol.get(symbol) ?? 0) > 1) {
+      invalid.push({ symbol, code: "VAULT_DUPLICATE_RESEARCH" });
+      continue;
+    }
+
+    const knownInvalid = invalidBySymbol.get(symbol);
+    if (knownInvalid) {
+      invalid.push(knownInvalid);
+      continue;
+    }
+
+    const candidate = candidatesBySymbol.get(symbol)?.[0];
+    if (!candidate) continue;
+
+    const parsed = parseResearchSummary(candidate, symbol);
+    if (parsed.ok) {
+      summaries.set(symbol, parsed.value);
+    } else {
+      invalid.push({ symbol, code: parsed.error.code });
+    }
   }
 
   return ok({ summaries, invalid });

@@ -382,6 +382,30 @@ describe("invalid research notes", () => {
       result.find((i) => i.id.includes("missing-research-note")),
     ).toBeUndefined();
   });
+
+  it("does not infer missing metadata from a note that failed validation", () => {
+    const ctx: InsightContext = {
+      positions: [
+        makePosition({
+          symbol: "9998.TW",
+          conviction: null,
+          sector: null,
+          theme: null,
+        }),
+      ],
+      researchSummaries: [],
+      invalidResearchSymbols: ["9998.tw"],
+      now: NOW,
+    };
+
+    const result = generateInsights(ctx);
+    expect(
+      result.find((i) => i.id.includes("invalid-research-note")),
+    ).toBeDefined();
+    expect(result.find((i) => i.id.includes("missing-rationale"))).toBeUndefined();
+    expect(result.find((i) => i.id.includes("missing-sector"))).toBeUndefined();
+    expect(result.find((i) => i.id.includes("missing-theme"))).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -389,7 +413,18 @@ describe("invalid research notes", () => {
 // ---------------------------------------------------------------------------
 
 describe("missing research notes", () => {
-  it("flags positions without matching research", () => {
+  it("does not infer missing notes when research was not loaded", () => {
+    const result = generateInsights({
+      positions: [makePosition({ symbol: "2330.TW" })],
+      now: NOW,
+    });
+
+    expect(
+      result.find((i) => i.id.includes("missing-research-note")),
+    ).toBeUndefined();
+  });
+
+  it("flags positions without matching research after a successful empty scan", () => {
     const ctx: InsightContext = {
       positions: [makePosition({ symbol: "NEW.TW" })],
       researchSummaries: [],
