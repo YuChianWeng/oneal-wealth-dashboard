@@ -93,6 +93,16 @@ describe("InvestmentReconciliationSchema", () => {
     expect(() => InvestmentReconciliationSchema.parse(withoutQuality)).toThrow();
   });
 
+  it("rejects path-like public provenance", () => {
+    expect(() =>
+      InvestmentReconciliationSchema.parse({
+        ...reconciliation,
+        cashAsOfSource:
+          "/home/ubuntu/ObsidianVault/Finance/Entries/2026-07-12.md",
+      }),
+    ).toThrow();
+  });
+
   it("accepts zero holdings after a complete liquidation", () => {
     const zeroHoldings = {
       ...reconciliation,

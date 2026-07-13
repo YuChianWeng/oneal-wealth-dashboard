@@ -9,6 +9,7 @@ import "server-only";
 
 import { z } from "zod";
 import { assertServerOnly } from "@/lib/server-only";
+import { isPublicSource } from "@/lib/public-source";
 
 assertServerOnly();
 
@@ -41,7 +42,9 @@ export const InvestmentReconciliationSchema = z
     valuationDate: date(),
     confirmedCash: amount(),
     cashAsOfDate: date(),
-    cashAsOfSource: z.string().min(1),
+    cashAsOfSource: z.string().min(1).refine(isPublicSource, {
+      message: "cashAsOfSource must be a public source identifier",
+    }),
     cashAsOfQuality: z.enum([
       "confirmed-explicit-event",
       "inferred-from-balance-entry",

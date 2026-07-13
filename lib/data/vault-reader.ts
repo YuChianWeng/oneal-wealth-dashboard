@@ -11,6 +11,7 @@ import "server-only";
 import { readFileSync, readdirSync, realpathSync, existsSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import matter from "gray-matter";
+import { JSON_SCHEMA, load as loadYaml } from "js-yaml";
 import { assertServerOnly } from "@/lib/server-only";
 import { SourceError } from "@/lib/errors";
 import { ok, err, type Result } from "@/lib/result";
@@ -147,7 +148,14 @@ export function readNote(relativePath: string): Result<RawNote, SourceError> {
 
   let parsed: matter.GrayMatterFile<string>;
   try {
-    parsed = matter(raw);
+    parsed = matter(raw, {
+      engines: {
+        yaml: (source) => {
+          const data = loadYaml(source, { schema: JSON_SCHEMA });
+          return typeof data === "object" && data !== null ? data : {};
+        },
+      },
+    });
   } catch (e) {
     return err(
       new SourceError(

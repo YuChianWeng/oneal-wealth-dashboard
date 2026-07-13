@@ -65,7 +65,7 @@ function isoDateOrEmpty(value: unknown): string {
 }
 
 function exactIsoDateOrEmpty(value: unknown): string {
-  const date = isoDateOrEmpty(value);
+  const date = typeof value === "string" ? value.trim() : "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "";
   const parsed = new Date(`${date}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) &&
@@ -75,7 +75,20 @@ function exactIsoDateOrEmpty(value: unknown): string {
 }
 
 function firstPresent(...values: unknown[]): unknown {
-  return values.find((value) => value !== null && value !== undefined && value !== "");
+  return values.find(
+    (value) =>
+      value !== null &&
+      value !== undefined &&
+      !(typeof value === "string" && value.trim() === ""),
+  );
+}
+
+function strictTradeNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  if (typeof value !== "number" && typeof value !== "string") return Number.NaN;
+  const parsed = typeof value === "number" ? value : Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
 function firstValidIsoDate(...values: unknown[]): string {
@@ -210,7 +223,7 @@ function tradeBusinessId(
   fm: Record<string, unknown>,
 ): string {
   const orderId = String(
-    fm.orderId ?? fm["order-id"] ?? fm.order_id ?? "",
+    firstPresent(fm.orderId, fm["order-id"], fm.order_id) ?? "",
   ).trim();
   if (orderId) {
     const broker = String(fm.broker ?? fm.Broker ?? "unknown")
@@ -236,7 +249,7 @@ function tradeBusinessId(
 /**
  * Convert a raw transaction note into a validated TradeRecord.
  */
-function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
+export function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
   const fm = note.frontmatter;
   const symbol = String(fm.symbol ?? fm.ticker ?? fm.Symbol ?? "").trim();
 
@@ -264,15 +277,17 @@ function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
     symbol,
     name: String(fm.name ?? fm.Name ?? symbol),
     side: String(fm.side ?? fm.Side ?? "").toLowerCase(),
-    shares: Number(fm.shares ?? fm.Shares ?? 0),
-    price: Number(fm.price ?? fm.Price ?? 0),
-    grossAmount:
-      numberOrNull(fm.grossAmount ?? fm["gross-amount"] ?? fm.gross_amount) ??
-      undefined,
-    feeTax: numberOrNull(fm.feeTax ?? fm["fee-tax"] ?? fm.fee_tax) ?? undefined,
-    netCashflow:
-      numberOrNull(fm.netCashflow ?? fm["net-cashflow"] ?? fm.net_cashflow) ??
-      undefined,
+    shares: strictTradeNumber(firstPresent(fm.shares, fm.Shares)) ?? Number.NaN,
+    price: strictTradeNumber(firstPresent(fm.price, fm.Price)) ?? Number.NaN,
+    grossAmount: strictTradeNumber(
+      firstPresent(fm.grossAmount, fm["gross-amount"], fm.gross_amount),
+    ),
+    feeTax: strictTradeNumber(
+      firstPresent(fm.feeTax, fm["fee-tax"], fm.fee_tax),
+    ),
+    netCashflow: strictTradeNumber(
+      firstPresent(fm.netCashflow, fm["net-cashflow"], fm.net_cashflow),
+    ),
     reason: fm.reason ?? fm.Reason ?? null,
     strategy: fm.strategy ?? fm.Strategy ?? null,
     broker: fm.broker ?? fm.Broker ?? null,

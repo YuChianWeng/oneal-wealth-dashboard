@@ -11,6 +11,7 @@ describe("TWSE market calendar", () => {
   it("derives settlement boundaries from verified trading sessions", () => {
     expect(addTwseTradingDays("2026-07-13", 2)).toBe("2026-07-15");
     expect(addTwseTradingDays("2026-02-11", 2)).toBe("2026-02-24");
+    expect(addTwseTradingDays("2025-01-22", 2)).toBe("2025-02-04");
     expect(addTwseTradingDays("2027-01-04", 2)).toBeNull();
   });
 
@@ -55,19 +56,20 @@ describe("TWSE market calendar", () => {
   });
 
   it("fails closed when the annual holiday calendar is not verified", () => {
+    expect(hasVerifiedTwseCalendar("2025-12-31")).toBe(true);
     expect(hasVerifiedTwseCalendar("2026-12-31")).toBe(true);
     expect(hasVerifiedTwseCalendar("2027-01-04")).toBe(false);
-    expect(isTwseTradingDay("2025-12-31")).toBe(false);
+    expect(isTwseTradingDay("2025-12-31")).toBe(true);
     expect(isTwseTradingDay("2026-02-30")).toBe(false);
     expect(
       latestCompletedTwseTradingDay("2027-01-04T15:00:00+08:00"),
     ).toBeNull();
     expect(
       latestCompletedTwseTradingDay("2026-01-01T15:00:00+08:00"),
-    ).toBeNull();
+    ).toBe("2025-12-31");
     expect(
       latestCompletedTwseTradingDay("2026-01-02T09:00:00+08:00"),
-    ).toBeNull();
+    ).toBe("2025-12-31");
   });
 
   it("walks across the Lunar New Year closure", () => {

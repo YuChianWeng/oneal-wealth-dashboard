@@ -63,6 +63,14 @@ def iso(value) -> str:
     return str(value or '')[:10]
 
 
+_PUBLIC_SOURCE_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$')
+
+
+def public_source(value, fallback: str) -> str:
+    source = str(value or '').strip()
+    return source if _PUBLIC_SOURCE_RE.fullmatch(source) else fallback
+
+
 def required_iso_date(value, label: str, source: str) -> str:
     """Parse a date-only source value without truncating timestamps or garbage."""
     if isinstance(value, dt.datetime):
@@ -204,7 +212,7 @@ def latest_confirmed_account_balance(account_key: str, valuation_date: str) -> d
                 explicit.append((timestamp, {
                     'balance': balance,
                     'as_of_date': as_of_date,
-                    'source': str(payload.get('source') or 'finance-raw-event'),
+                    'source': public_source(payload.get('source'), 'finance-raw-event'),
                     'quality': 'confirmed-explicit-event',
                 }))
     if explicit:
@@ -226,7 +234,7 @@ def latest_confirmed_account_balance(account_key: str, valuation_date: str) -> d
     return {
         'balance': balance,
         'as_of_date': date,
-        'source': str(fm.get('source') or 'balance-entry'),
+        'source': public_source(fm.get('source'), 'balance-entry'),
         'quality': 'inferred-from-balance-entry',
     }
 
@@ -251,12 +259,23 @@ def pending_trade_cash_adjustment(cash_as_of: str, valuation_date: str) -> tuple
                 return value
         return None
 
-    def required_cashflow(value, filename: str) -> float:
+    def finite_number(value, label: str, filename: str, *, required: bool):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            if required:
+                raise ValueError(f'missing {label} in transaction {filename}')
+            return None
         try:
             parsed = float(value)
         except (TypeError, ValueError) as exc:
-            raise ValueError(f'invalid net cashflow in transaction {filename}') from exc
-        if not math.isfinite(parsed) or parsed == 0:
+            raise ValueError(f'invalid {label} in transaction {filename}') from exc
+        if not math.isfinite(parsed):
+            raise ValueError(f'invalid {label} in transaction {filename}')
+        return parsed
+
+    def required_cashflow(value, filename: str) -> float:
+        parsed = finite_number(value, 'net cashflow', filename, required=True)
+        assert parsed is not None
+        if parsed == 0:
             raise ValueError(f'invalid net cashflow in transaction {filename}')
         return parsed
 
@@ -296,6 +315,23 @@ def pending_trade_cash_adjustment(cash_as_of: str, valuation_date: str) -> tuple
         side = str(first_value(fm, 'side', 'Side') or '').strip().lower()
         if side not in {'buy', 'sell'}:
             raise ValueError(f'invalid side in transaction {path.name}')
+        symbol = str(first_value(fm, 'symbol', 'ticker', 'Symbol') or '').strip()
+        if not symbol:
+            raise ValueError(f'missing symbol in transaction {path.name}')
+        shares = finite_number(
+            first_value(fm, 'shares', 'Shares'), 'shares', path.name, required=True
+        )
+        price = finite_number(
+            first_value(fm, 'price', 'Price'), 'price', path.name, required=True
+        )
+        gross_amount = finite_number(
+            first_value(fm, 'grossAmount', 'gross-amount', 'gross_amount'),
+            'gross amount', path.name, required=False,
+        )
+        fee_tax = finite_number(
+            first_value(fm, 'feeTax', 'fee-tax', 'fee_tax'),
+            'fee tax', path.name, required=False,
+        )
         raw_cashflow = required_cashflow(
             first_value(fm, 'netCashflow', 'net-cashflow', 'net_cashflow'),
             path.name,
@@ -314,14 +350,14 @@ def pending_trade_cash_adjustment(cash_as_of: str, valuation_date: str) -> tuple
             identity = (
                 'trade',
                 trade_date,
-                settlement_date or '',
-                str(first_value(fm, 'symbol', 'ticker', 'Symbol') or '').strip(),
+                symbol,
                 side,
-                str(first_value(fm, 'shares', 'Shares') or '').strip(),
-                str(first_value(fm, 'price', 'Price') or '').strip(),
-                str(first_value(fm, 'grossAmount', 'gross-amount', 'gross_amount') or '').strip(),
-                str(first_value(fm, 'feeTax', 'fee-tax', 'fee_tax') or '').strip(),
+                shares,
+                price,
+                gross_amount,
+                fee_tax,
                 raw_cashflow,
+                settlement_date or '',
             )
         if identity in seen_transactions:
             raise ValueError(f'duplicate transaction: {path.name}')
@@ -363,6 +399,7 @@ def write_snapshot(*, date: str, principal: float, strategy_value: float, cash_b
                    benchmark_snapshot_date: str, benchmark_ticker: str, is_seed: bool, dry_run: bool,
                    cash_as_of_source: str | None = None, cash_as_of_quality: str | None = None):
     return_pct = (strategy_value / principal - 1) * 100 if principal else 0
+    safe_cash_as_of_source = public_source(cash_as_of_source, 'unavailable')
     path = OUTPUT / f'{date}.md'
     content = f'''---
 type: loan-investment-snapshot
@@ -373,7 +410,7 @@ strategy_value: {strategy_value:.2f}
 strategy_return_pct: {return_pct:.6f}
 cash_balance: {cash_balance if cash_balance is not None else 'null'}
 cash_as_of_date: {cash_as_of or 'null'}
-cash_as_of_source: "{cash_as_of_source or 'unavailable'}"
+cash_as_of_source: "{safe_cash_as_of_source}"
 cash_as_of_quality: "{cash_as_of_quality or 'unavailable'}"
 pending_trade_cash_adjustment: {pending_trade_cash}
 pending_trade_count: {pending_trade_count}
@@ -391,7 +428,7 @@ source: "loan-investment-snapshot"
 - 起始本金：TWD {principal:,.0f}
 - 累積報酬：{return_pct:+.2f}%
 - 國泰投資交割戶已確認現金：{'TWD ' + format(cash_balance, ',.0f') if cash_balance is not None else '起始點，不拆分'}（截至 {cash_as_of or '—'}）
-- 現金來源／品質：{cash_as_of_source or '—'}／{cash_as_of_quality or 'unavailable'}
+- 現金來源／品質：{safe_cash_as_of_source}／{cash_as_of_quality or 'unavailable'}
 - 未交割交易應收／應付：{'TWD ' + format(pending_trade_cash, '+,.0f')}（{pending_trade_count} 筆）
 - 有效現金價值：{'TWD ' + format(effective_cash_value, ',.0f') if effective_cash_value is not None else '起始點，不拆分'}
 - 股票市值：{'TWD ' + format(brokerage_value, ',.0f') if brokerage_value is not None else '起始點，不拆分'}

@@ -3,6 +3,7 @@ import "server-only";
 import { assertServerOnly } from "@/lib/server-only";
 import { SourceError } from "@/lib/errors";
 import { err, ok, type Result } from "@/lib/result";
+import { sanitizePublicSource } from "@/lib/public-source";
 import { listNotes, readNote } from "@/lib/data/vault-reader";
 import { savingsPolicySummary } from "@/lib/data/insurance-policy-repository";
 import {
@@ -127,9 +128,10 @@ export function loanInvestmentPerformance(): Result<
       isSeed: fm.is_seed === true || fm.is_seed === "true",
       cashAsOfDate,
       confirmedCash: numberOrNull(fm.cash_balance),
-      cashAsOfSource:
-        String(fm.cash_as_of_source ?? "").trim() ||
-        (cashAsOfDate ? "legacy-balance-entry" : "unavailable"),
+      cashAsOfSource: sanitizePublicSource(
+        fm.cash_as_of_source,
+        cashAsOfDate ? "legacy-balance-entry" : "unavailable",
+      ),
       cashAsOfQuality,
       pendingTradeCashAdjustment:
         numberOrNull(fm.pending_trade_cash_adjustment) ?? 0,

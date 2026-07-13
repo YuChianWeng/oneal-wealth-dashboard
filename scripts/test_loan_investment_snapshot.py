@@ -37,7 +37,10 @@ def write_trade(
         "---\n"
         f"type: {note_type}\n"
         f"trade_date: '{trade_date}'\n"
+        "symbol: 2330.TW\n"
         f"side: {side}\n"
+        "shares: 5\n"
+        "price: 1749\n"
         f"{cashflow_line}"
         f"{settlement_line}"
         "---\n"
@@ -275,6 +278,53 @@ class PendingTradeCashAdjustmentTests(unittest.TestCase):
                         "2026-07-12", "2026-07-13"
                     )
 
+    def test_duplicate_identity_canonicalizes_integer_decimal_spellings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            trades = Path(tmp)
+            fixtures = {
+                "integer.md": ("5", "1749", "8745", "0", "8743"),
+                "decimal.md": ("5.0", "1749.0", "8745.0", "0.0", "8743.0"),
+            }
+            for filename, values in fixtures.items():
+                shares, price, gross, fee, cashflow = values
+                (trades / filename).write_text(
+                    "---\n"
+                    "type: transaction\n"
+                    "trade_date: '2026-07-13'\n"
+                    "settlement_date: '2026-07-15'\n"
+                    "symbol: 2330.TW\n"
+                    "side: sell\n"
+                    f"shares: {shares}\n"
+                    f"price: {price}\n"
+                    f"gross_amount: {gross}\n"
+                    f"fee_tax: {fee}\n"
+                    f"net_cashflow: {cashflow}\n"
+                    "---\n",
+                    encoding="utf-8",
+                )
+            with patch.object(snapshot, "TRANSACTIONS", trades):
+                with self.assertRaisesRegex(ValueError, "duplicate transaction"):
+                    snapshot.pending_trade_cash_adjustment(
+                        "2026-07-12", "2026-07-13"
+                    )
+
+    def test_rejects_display_formatted_cashflow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            trades = Path(tmp)
+            write_trade(
+                trades,
+                "formatted.md",
+                trade_date="2026-07-13",
+                settlement_date="2026-07-15",
+                side="sell",
+                net_cashflow="$8,743",
+            )
+            with patch.object(snapshot, "TRANSACTIONS", trades):
+                with self.assertRaisesRegex(ValueError, "invalid net cashflow"):
+                    snapshot.pending_trade_cash_adjustment(
+                        "2026-07-12", "2026-07-13"
+                    )
+
     def test_validates_transactions_even_when_cash_snapshot_covers_them(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             trades = Path(tmp)
@@ -395,6 +445,35 @@ class AccountFreshnessTests(unittest.TestCase):
             self.assertEqual(result["balance"], 44847.0)
             self.assertEqual(result["as_of_date"], "2026-07-12")
             self.assertEqual(result["quality"], "inferred-from-balance-entry")
+
+    def test_path_like_raw_source_is_sanitized_for_public_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "raw"
+            entries = Path(tmp) / "entries"
+            raw.mkdir()
+            entries.mkdir()
+            event = {
+                "created_at": "2026-07-12T20:00:17+08:00",
+                "event_type": "balance_snapshot",
+                "result_status": "created",
+                "payload": {
+                    "balances": {"CathayBank": "44847"},
+                    "source": "/home/ubuntu/ObsidianVault/Finance/Entries/private.md",
+                    "timestamp": "2026-07-12T20:00:17+08:00",
+                },
+            }
+            (raw / "2026-07-12.jsonl").write_text(
+                json.dumps(event, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            with (
+                patch.object(snapshot, "RAW_BALANCE_LOGS", raw),
+                patch.object(snapshot, "ENTRIES", entries),
+            ):
+                result = snapshot.latest_confirmed_account_balance(
+                    "CathayBank", "2026-07-13"
+                )
+            self.assertEqual(result["source"], "finance-raw-event")
 
 
 if __name__ == "__main__":
