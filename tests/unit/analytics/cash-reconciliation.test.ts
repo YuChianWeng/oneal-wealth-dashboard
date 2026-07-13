@@ -269,6 +269,51 @@ describe("computeInvestmentReconciliation", () => {
     ]);
   });
 
+  it("does not clear a missing-settlement trade with a T+1 cash snapshot", () => {
+    const result = computeInvestmentReconciliation(
+      baseInput({
+        valuationDate: "2026-07-16",
+        cashAsOfDate: "2026-07-14",
+        trades: [trade({ id: "missing-tplus-one", settlementDate: null })],
+      }),
+    );
+
+    expect(result.pendingTradeCashAdjustment).toBe(8_743);
+    expect(result.pendingSettlements[0]).toEqual(
+      expect.objectContaining({
+        id: "missing-tplus-one",
+        ageTradingDays: 3,
+        status: "overdue",
+        effectiveCashAdjustment: 8_743,
+      }),
+    );
+    expect(result.warnings).toContain(
+      "Trade missing-tplus-one: settlementDate missing; coverage inferred as 2026-07-15",
+    );
+  });
+
+  it("clears a missing-settlement trade only on inferred T+2", () => {
+    const result = computeInvestmentReconciliation(
+      baseInput({
+        valuationDate: "2026-07-16",
+        cashAsOfDate: "2026-07-15",
+        trades: [trade({ id: "missing-tplus-two", settlementDate: null })],
+      }),
+    );
+
+    expect(result.pendingTradeCashAdjustment).toBe(0);
+    expect(result.pendingSettlements[0]).toEqual(
+      expect.objectContaining({
+        id: "missing-tplus-two",
+        status: "covered-by-cash-snapshot",
+        effectiveCashAdjustment: 0,
+      }),
+    );
+    expect(result.warnings).toEqual([
+      "Trade missing-tplus-two: settlementDate missing; coverage inferred as 2026-07-15",
+    ]);
+  });
+
   it("marks a missing-settlement trade overdue after verified T+2", () => {
     const result = computeInvestmentReconciliation(
       baseInput({
@@ -286,6 +331,7 @@ describe("computeInvestmentReconciliation", () => {
     );
     expect(result.warnings).toEqual([
       "Trade missing-settlement: settlement overdue as of 2026-07-16",
+      "Trade missing-settlement: settlementDate missing; coverage inferred as 2026-07-15",
     ]);
   });
 
@@ -338,6 +384,7 @@ describe("computeInvestmentReconciliation", () => {
     ]);
     expect(result.status).toBe("attention");
     expect(result.warnings).toEqual([
+      "Trade date-mismatch: settlementDate invalid; coverage inferred as 2026-07-16",
       "Trade date-mismatch: settlementDate precedes tradeDate",
       "Trade overdue: settlement overdue as of 2026-07-16",
     ]);

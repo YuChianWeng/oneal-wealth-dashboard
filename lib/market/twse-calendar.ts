@@ -84,6 +84,28 @@ export function hasVerifiedTwseCalendar(date: string): boolean {
   return isISODate(date) && TWSE_HOLIDAYS_BY_YEAR.has(date.slice(0, 4));
 }
 
+export function addTwseTradingDays(
+  date: string,
+  tradingDays: number,
+): string | null {
+  if (
+    !hasVerifiedTwseCalendar(date) ||
+    !Number.isInteger(tradingDays) ||
+    tradingDays < 0
+  ) {
+    return null;
+  }
+
+  let candidate = date;
+  let remaining = tradingDays;
+  while (remaining > 0) {
+    candidate = shiftDate(candidate, 1);
+    if (!hasVerifiedTwseCalendar(candidate)) return null;
+    if (isTwseTradingDay(candidate)) remaining -= 1;
+  }
+  return candidate;
+}
+
 export function isTwseTradingDay(date: string): boolean {
   const holidays = TWSE_HOLIDAYS_BY_YEAR.get(date.slice(0, 4));
   if (!holidays || !isISODate(date)) return false;

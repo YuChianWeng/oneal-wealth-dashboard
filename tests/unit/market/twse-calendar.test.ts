@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addTwseTradingDays,
   hasVerifiedTwseCalendar,
   isTwseTradingDay,
   latestCompletedTwseTradingDay,
@@ -7,6 +8,12 @@ import {
 } from "@/lib/market/twse-calendar";
 
 describe("TWSE market calendar", () => {
+  it("derives settlement boundaries from verified trading sessions", () => {
+    expect(addTwseTradingDays("2026-07-13", 2)).toBe("2026-07-15");
+    expect(addTwseTradingDays("2026-02-11", 2)).toBe("2026-02-24");
+    expect(addTwseTradingDays("2027-01-04", 2)).toBeNull();
+  });
+
   it("recognizes weekends and verified 2026 holidays", () => {
     expect(isTwseTradingDay("2026-07-11")).toBe(false);
     expect(isTwseTradingDay("2026-04-06")).toBe(false);

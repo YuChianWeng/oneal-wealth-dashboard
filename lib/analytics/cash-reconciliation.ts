@@ -12,6 +12,7 @@ import type {
   PendingSettlement,
 } from "@/lib/schemas/reconciliation";
 import {
+  addTwseTradingDays,
   hasVerifiedTwseCalendar,
   isTwseTradingDay,
 } from "@/lib/market/twse-calendar";
@@ -156,6 +157,8 @@ export function computeInvestmentReconciliation(
       continue;
     }
 
+    const settlementDateWasProvided =
+      trade.settlementDate !== null && trade.settlementDate !== undefined;
     let settlementDate: string | null = trade.settlementDate ?? null;
     if (settlementDate !== null && !isIsoDate(settlementDate)) {
       warnings.push(`Trade ${tradeId}: invalid settlementDate`);
@@ -182,12 +185,23 @@ export function computeInvestmentReconciliation(
       warnings.push(`Trade ${tradeId}: trading-day age unavailable`);
     }
 
-    const cashCoverageDate = settlementDate ?? trade.tradeDate;
-    const coveredByCashSnapshot = input.cashAsOfDate >= cashCoverageDate;
+    const inferredSettlementDate =
+      settlementDate === null ? addTwseTradingDays(trade.tradeDate, 2) : null;
+    if (settlementDate === null) {
+      const settlementIssue = settlementDateWasProvided ? "invalid" : "missing";
+      warnings.push(
+        inferredSettlementDate === null
+          ? `Trade ${tradeId}: settlementDate ${settlementIssue}; coverage unavailable`
+          : `Trade ${tradeId}: settlementDate ${settlementIssue}; coverage inferred as ${inferredSettlementDate}`,
+      );
+    }
+    const cashCoverageDate = settlementDate ?? inferredSettlementDate;
+    const coveredByCashSnapshot =
+      cashCoverageDate !== null && input.cashAsOfDate >= cashCoverageDate;
     const overdueByDate =
-      settlementDate !== null && settlementDate < input.valuationDate;
+      cashCoverageDate !== null && cashCoverageDate < input.valuationDate;
     const overdueByAge =
-      settlementDate === null &&
+      cashCoverageDate === null &&
       ageTradingDays !== null &&
       ageTradingDays > 2;
     const overdue =
