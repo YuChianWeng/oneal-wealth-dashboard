@@ -40,6 +40,12 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "持倉總覽", href: "/portfolio", icon: null },
       {
+        label: "損益分析",
+        href: "/portfolio/pnl",
+        icon: null,
+        activePrefix: true,
+      },
+      {
         label: "個股研究",
         href: "/portfolio/research",
         icon: null,

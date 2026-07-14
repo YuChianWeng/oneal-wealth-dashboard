@@ -154,6 +154,23 @@ function IconTransactions() {
   );
 }
 
+function IconPnl() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 18 18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
+      <path d="M3 13.5V6.8M7 13.5V9M11 13.5V4.5M15 13.5V2.8" />
+      <path d="M2.5 15.5h13" />
+    </svg>
+  );
+}
+
 function IconPerformance() {
   return (
     <svg
@@ -233,6 +250,7 @@ const NAV_SECTION_ICONS: Record<string, React.FC> = {
   持倉總覽: IconPortfolio,
   個股研究: IconStockResearch,
   交易紀錄: IconTransactions,
+  損益分析: IconPnl,
   績效比較: IconPerformance,
   淨資產成長: IconGrowth,
   財務健康: IconHealth,
