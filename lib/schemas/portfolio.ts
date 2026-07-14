@@ -21,6 +21,15 @@ const amount = () => z.number().finite();
 const dateStr = () =>
   z.string().datetime({ offset: true }).or(z.string().date());
 
+export const TradeDataQualitySchema = z.enum([
+  "confirmed",
+  "estimated-fee",
+  "needs-date-confirmation",
+  "needs-review",
+]);
+
+export type TradeDataQuality = z.infer<typeof TradeDataQualitySchema>;
+
 // ---------------------------------------------------------------------------
 // Position summary
 // ---------------------------------------------------------------------------
@@ -83,10 +92,14 @@ export const TradeRecordSchema = z
     shares: amount(),
     price: amount(),
     grossAmount: amount().optional(),
-    feeTax: amount().optional(),
+    feeTax: amount().nonnegative().optional(),
     netCashflow: amount().refine((value) => value !== 0, {
       message: "netCashflow must be nonzero",
     }),
+    realizedPnl: amount().nullable().optional(),
+    unrealizedPnl: amount().nullable().optional(),
+    dataQuality: TradeDataQualitySchema.optional(),
+    realizedPnlIncludesFeeTax: z.boolean().optional(),
     reason: z.string().nullable().optional(),
     strategy: z.string().nullable().optional(),
     broker: z.string().nullable().optional(),

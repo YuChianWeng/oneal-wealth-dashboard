@@ -93,6 +93,30 @@ function strictTradeNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+function nullableTradeNumber(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  if (value === undefined) return undefined;
+  const parsed = strictTradeNumber(value);
+  return parsed !== undefined && Number.isFinite(parsed) ? parsed : null;
+}
+
+function tradeDataQuality(value: unknown):
+  | "confirmed"
+  | "estimated-fee"
+  | "needs-date-confirmation"
+  | "needs-review"
+  | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") return "needs-review";
+  const normalized = value.trim().toLowerCase();
+  return normalized === "confirmed" ||
+    normalized === "estimated-fee" ||
+    normalized === "needs-date-confirmation" ||
+    normalized === "needs-review"
+    ? normalized
+    : "needs-review";
+}
+
 function positionNameFromPath(path: string, symbol: string): string {
   const basename = path.split("/").pop()?.replace(/\.md$/i, "").trim() ?? "";
   if (basename.toUpperCase().startsWith(symbol.toUpperCase())) {
@@ -424,6 +448,22 @@ export function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
     feeTax: strictTradeNumber(
       firstPresent(fm.feeTax, fm["fee-tax"], fm.fee_tax),
     ),
+    realizedPnl: nullableTradeNumber(
+      firstPresent(fm.realizedPnl, fm["realized-pnl"], fm.realized_pnl),
+    ),
+    unrealizedPnl: nullableTradeNumber(
+      firstPresent(fm.unrealizedPnl, fm["unrealized-pnl"], fm.unrealized_pnl),
+    ),
+    dataQuality: tradeDataQuality(firstPresent(
+      fm.dataQuality,
+      fm["data-quality"],
+      fm.data_quality,
+      fm.DataQuality,
+    )),
+    realizedPnlIncludesFeeTax:
+      fm.realizedPnlIncludesFeeTax ??
+      fm["realized-pnl-includes-fee-tax"] ??
+      fm.realized_pnl_includes_fee_tax,
     netCashflow: strictTradeNumber(
       firstPresent(fm.netCashflow, fm["net-cashflow"], fm.net_cashflow),
     ),

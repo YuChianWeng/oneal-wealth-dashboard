@@ -14,6 +14,7 @@ export {
   computePerformanceSeries,
 } from "./portfolio-performance";
 export { generateInsights } from "./insights";
+export { computePnlAnalytics } from "./pnl";
 export {
   computeAllocationByStock,
   computeAllocationBySector,
@@ -53,3 +54,10 @@ export type {
   InsightSeverity,
   OverviewResponse,
 } from "./types";
+export type {
+  PnlAggregate,
+  PnlAnalytics,
+  PnlAnalyticsInput,
+  PnlAvailability,
+  PnlBySymbol,
+} from "./pnl";

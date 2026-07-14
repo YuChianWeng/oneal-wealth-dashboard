@@ -125,6 +125,20 @@ describe("GET /api/portfolio/[symbol]", () => {
     expect(body.data.research).toBeNull();
   });
 
+  it("fails closed when trade loading fails", async () => {
+    mockGetPosition.mockReturnValue(ok(samplePosition));
+    mockGetTrades.mockReturnValue(
+      err(new SourceError("Trade source unavailable", "VAULT_READ_ERROR")),
+    );
+    mockGetResearchSummary.mockReturnValue(ok(sampleResearch));
+
+    const response = await GET(req(), {
+      params: Promise.resolve({ symbol: "2330.TW" }),
+    });
+    expect(response.status).toBe(500);
+    expect((await response.json()).data).toBeUndefined();
+  });
+
   it("has Cache-Control: private, no-store", async () => {
     mockGetPosition.mockReturnValue(ok(samplePosition));
     mockGetTrades.mockReturnValue(ok([]));

@@ -136,3 +136,124 @@ export function computeWeightedCostFromPositions(
     positions.map((p) => ({ shares: p.shares, price: p.avgCost })),
   );
 }
+
+// ---------------------------------------------------------------------------
+// Fee/tax accounting audit
+// ---------------------------------------------------------------------------
+
+export type FeeTaxAuditStatus = "clean" | "needs-review";
+export type FeeTaxTreatment =
+  | "accounted-in-cashflow"
+  | "included-in-realized-pnl"
+  | "not-provided"
+  | "ambiguous";
+
+export interface FeeTaxAuditTrade {
+  side: "buy" | "sell";
+  grossAmount?: number;
+  feeTax?: number;
+  netCashflow?: number;
+  realizedPnl?: number | null;
+  realizedPnlIncludesFeeTax?: boolean;
+  dataQuality?: string;
+}
+
+export interface FeeTaxAuditResult {
+  status: FeeTaxAuditStatus;
+  treatment: FeeTaxTreatment;
+  expectedNetCashflow: number | null;
+  cashflowDelta: number | null;
+  realizedPnlAfterFeeTax: number | null;
+  findings: string[];
+}
+
+const accountingEpsilon = 0.01;
+
+function closeEnough(left: number, right: number): boolean {
+  return Math.abs(left - right) <= accountingEpsilon;
+}
+
+/** Audit fee/tax semantics without double-subtracting costs from PnL. */
+export function auditTradeFeeTaxAccounting(
+  trade: FeeTaxAuditTrade,
+): FeeTaxAuditResult {
+  const findings: string[] = [];
+  const hasGross = Number.isFinite(trade.grossAmount);
+  const hasFee = Number.isFinite(trade.feeTax) && trade.feeTax! >= 0;
+  const hasCashflow = Number.isFinite(trade.netCashflow);
+  const feeTax = hasFee ? trade.feeTax! : 0;
+  const expectedNetCashflow =
+    hasGross && hasFee
+      ? trade.side === "buy"
+        ? -(trade.grossAmount! + feeTax)
+        : trade.grossAmount! - feeTax
+      : null;
+
+  if (!hasGross) findings.push("missing-gross-amount");
+  if (!hasFee) {
+    findings.push(
+      Number.isFinite(trade.feeTax) && trade.feeTax! < 0
+        ? "invalid-negative-fee-tax"
+        : "missing-fee-tax",
+    );
+  }
+  if (!hasCashflow) findings.push("missing-net-cashflow");
+  if (
+    expectedNetCashflow !== null &&
+    hasCashflow &&
+    !closeEnough(expectedNetCashflow, trade.netCashflow!)
+  ) {
+    findings.push("cashflow-does-not-reconcile");
+  }
+  if (trade.dataQuality === "estimated-fee") findings.push("estimated-fee-tax");
+  if (trade.dataQuality === "needs-review") findings.push("source-needs-review");
+
+  let treatment: FeeTaxTreatment = hasFee
+    ? "accounted-in-cashflow"
+    : "not-provided";
+  let realizedPnlAfterFeeTax =
+    trade.realizedPnl === null || trade.realizedPnl === undefined
+      ? null
+      : trade.realizedPnl;
+
+  if (trade.realizedPnl !== null && trade.realizedPnl !== undefined) {
+    if (trade.realizedPnlIncludesFeeTax === true) {
+      treatment = "included-in-realized-pnl";
+    } else if (trade.realizedPnlIncludesFeeTax === false) {
+      treatment = "accounted-in-cashflow";
+      realizedPnlAfterFeeTax = trade.realizedPnl - feeTax;
+    } else {
+      treatment = "ambiguous";
+      findings.push("realized-pnl-fee-tax-inclusion-unknown");
+    }
+  }
+
+  return {
+    status: findings.length === 0 ? "clean" : "needs-review",
+    treatment,
+    expectedNetCashflow,
+    cashflowDelta:
+      expectedNetCashflow !== null && hasCashflow
+        ? trade.netCashflow! - expectedNetCashflow
+        : null,
+    realizedPnlAfterFeeTax,
+    findings,
+  };
+}
+
+export interface FeeTaxPortfolioAuditResult {
+  status: FeeTaxAuditStatus;
+  trades: FeeTaxAuditResult[];
+}
+
+export function auditPortfolioFeeTaxAccounting(
+  trades: FeeTaxAuditTrade[],
+): FeeTaxPortfolioAuditResult {
+  const results = trades.map(auditTradeFeeTaxAccounting);
+  return {
+    status: results.some((result) => result.status === "needs-review")
+      ? "needs-review"
+      : "clean",
+    trades: results,
+  };
+}

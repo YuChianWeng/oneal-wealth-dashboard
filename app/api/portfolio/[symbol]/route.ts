@@ -70,8 +70,21 @@ export async function GET(
       );
     }
 
+    // Trades are part of the portfolio economics contract. Do not turn a
+    // source or parsing failure into an apparently valid empty trade history.
+    if (!tradesResult.ok) {
+      const safe = toSafeResponse(tradesResult.error);
+      return NextResponse.json(
+        { version: 1, error: safe },
+        {
+          status: 500,
+          headers: { "Cache-Control": "private, no-store" },
+        },
+      );
+    }
+
     const position = positionResult.value;
-    const trades = tradesResult.ok ? tradesResult.value : [];
+    const trades = tradesResult.value;
     const research = researchResult.ok ? researchResult.value : null;
 
     return NextResponse.json(

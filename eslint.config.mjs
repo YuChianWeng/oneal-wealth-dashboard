@@ -13,6 +13,7 @@ const config = [
       ".next/**",
       "next-env.d.ts",
       "node_modules/**",
+      ".worktrees/**",
       "playwright-report/**",
       "test-results/**",
     ],

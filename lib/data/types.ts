@@ -5,6 +5,8 @@
  * directly. View models are defined in lib/schemas/*.
  */
 
+import type { TradeDataQuality } from "@/lib/schemas/portfolio";
+
 // ---------------------------------------------------------------------------
 // Source identifiers
 // ---------------------------------------------------------------------------
@@ -80,6 +82,10 @@ export interface RawTradeRecord {
   grossAmount?: number;
   feeTax?: number;
   netCashflow?: number;
+  realizedPnl?: number | null;
+  unrealizedPnl?: number | null;
+  dataQuality?: TradeDataQuality;
+  realizedPnlIncludesFeeTax?: boolean;
   broker?: string;
   account?: string;
   reason?: string;

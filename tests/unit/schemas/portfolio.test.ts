@@ -108,6 +108,25 @@ describe("TradeRecordSchema", () => {
     expect(TradeRecordSchema.parse(valid)).toEqual(valid);
   });
 
+  it("accepts frozen PnL and fee/tax economics fields", () => {
+    const data = {
+      ...valid,
+      feeTax: 405,
+      realizedPnl: 12500,
+      unrealizedPnl: null,
+      dataQuality: "confirmed" as const,
+      realizedPnlIncludesFeeTax: true,
+    };
+    expect(TradeRecordSchema.parse(data)).toEqual(data);
+  });
+
+  it("rejects negative fees and unknown data quality", () => {
+    expect(() => TradeRecordSchema.parse({ ...valid, feeTax: -1 })).toThrow();
+    expect(() =>
+      TradeRecordSchema.parse({ ...valid, dataQuality: "guessed" }),
+    ).toThrow();
+  });
+
   it("rejects invalid side", () => {
     expect(() => TradeRecordSchema.parse({ ...valid, side: "hold" })).toThrow();
   });

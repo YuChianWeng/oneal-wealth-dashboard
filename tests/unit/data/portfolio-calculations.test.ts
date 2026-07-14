@@ -10,6 +10,8 @@ vi.mock("@/lib/server-only", () => ({
 }));
 
 import {
+  auditPortfolioFeeTaxAccounting,
+  auditTradeFeeTaxAccounting,
   computeAllocation,
   computeWeightedCost,
   computeWeightedCostFromPositions,
@@ -221,5 +223,29 @@ describe("computeWeightedCostFromPositions", () => {
 
   it("returns 0 for empty positions", () => {
     expect(computeWeightedCostFromPositions([])).toBe(0);
+  });
+});
+
+describe("fee/tax accounting audit", () => {
+  it("reconciles buy and sell cashflow with explicit fees", () => {
+    expect(auditTradeFeeTaxAccounting({ side: "buy", grossAmount: 1000, feeTax: 2, netCashflow: -1002 })).toMatchObject({ status: "clean", expectedNetCashflow: -1002 });
+    expect(auditTradeFeeTaxAccounting({ side: "sell", grossAmount: 450, feeTax: 1, netCashflow: 449 })).toMatchObject({ status: "clean", expectedNetCashflow: 449 });
+  });
+
+  it("does not double subtract fees already included in realized PnL", () => {
+    expect(auditTradeFeeTaxAccounting({ side: "sell", grossAmount: 1000, feeTax: 10, netCashflow: 990, realizedPnl: 90, realizedPnlIncludesFeeTax: true })).toMatchObject({ status: "clean", realizedPnlAfterFeeTax: 90 });
+  });
+
+  it("flags missing, estimated, and ambiguous accounting", () => {
+    expect(auditTradeFeeTaxAccounting({ side: "sell", grossAmount: 1000, netCashflow: 1000 }).status).toBe("needs-review");
+    expect(auditTradeFeeTaxAccounting({ side: "buy", grossAmount: 1000, feeTax: 2, netCashflow: -1002, dataQuality: "estimated-fee" }).findings).toContain("estimated-fee-tax");
+    expect(auditTradeFeeTaxAccounting({ side: "sell", grossAmount: 1000, feeTax: 10, netCashflow: 990, realizedPnl: 90 }).findings).toContain("realized-pnl-fee-tax-inclusion-unknown");
+  });
+
+  it("rolls up review status across trades", () => {
+    expect(auditPortfolioFeeTaxAccounting([
+      { side: "buy", grossAmount: 100, feeTax: 1, netCashflow: -101 },
+      { side: "sell", grossAmount: 25, feeTax: 1, netCashflow: 25 },
+    ]).status).toBe("needs-review");
   });
 });
