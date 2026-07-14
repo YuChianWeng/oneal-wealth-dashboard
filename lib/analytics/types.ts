@@ -45,6 +45,71 @@ export interface PerformanceChartData {
   rawMarketValue: number[];
 }
 
+export interface BenchmarkValuePoint {
+  date: string;
+  value: number;
+}
+
+export interface AlignedBenchmarkSeries {
+  /** Base-100 normalized performance index; null means no prior market observation. */
+  index: Array<number | null>;
+  /** Actual market observation used for each portfolio date, including carry-forward. */
+  observationDates: Array<string | null>;
+}
+
+export type BenchmarkComparisonStatus = "measurable" | "insufficient-data";
+
+export type SecondaryComparisonStatus =
+  | "comparable"
+  | "source-unavailable"
+  | "not-comparable-at-primary-base";
+
+export interface BenchmarkComparisonViewModel {
+  status: BenchmarkComparisonStatus;
+  /** Portfolio snapshot where the first distinct primary observation is available. */
+  startDate: string | null;
+  /** Portfolio snapshot where the last distinct primary observation first becomes available. */
+  endDate: string | null;
+  distinctObservationCount: number;
+  portfolioReturnPct: number | null;
+  primaryReturnPct: number | null;
+  excessReturnPct: number | null;
+  winRatePct: number | null;
+  wins: number;
+  periods: number;
+}
+
+export interface BenchmarkComparisonInput {
+  dates: string[];
+  portfolioIndex: number[];
+  primary: AlignedBenchmarkSeries;
+  /** Null means the secondary source is unavailable. */
+  secondary: AlignedBenchmarkSeries | null;
+}
+
+export interface BenchmarkComparisonResult {
+  portfolioIndex: Array<number | null>;
+  primaryIndex: Array<number | null>;
+  secondaryIndex: Array<number | null>;
+  secondaryComparisonStatus: SecondaryComparisonStatus;
+  comparison: BenchmarkComparisonViewModel;
+}
+
+export interface PerformanceBenchmark extends AlignedBenchmarkSeries {
+  symbol: "0050.TW" | "^TWII";
+  name: "元大台灣50" | "TAIEX 加權指數";
+  basis: "adjusted-close-total-return-proxy" | "price-index";
+  freshness: "fresh" | "stale" | "unavailable";
+  latestDate: string | null;
+  source: "yfinance" | null;
+  sourceVersion: string | null;
+  fetchedAt: string | null;
+  exchangeTimezone: "Asia/Taipei" | null;
+  expectedLatestDate: string | null;
+  warnings: string[];
+  comparisonStatus: SecondaryComparisonStatus;
+}
+
 /** Alias — used by portfolio-performance.ts */
 export type PerformanceSeriesResult = PerformanceChartData;
 

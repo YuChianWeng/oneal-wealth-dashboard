@@ -3,7 +3,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { computePerformanceSeries } from "@/lib/analytics/portfolio-performance";
+import {
+  alignBenchmarkSeries,
+  computeBenchmarkComparison,
+  computePerformanceSeries,
+} from "@/lib/analytics/portfolio-performance";
 import type { AnalyticsSnapshotPoint } from "@/lib/analytics/types";
 
 // ---------------------------------------------------------------------------
@@ -340,5 +344,272 @@ describe("computePerformanceSeries", () => {
       expect(Number.isFinite(v)).toBe(true);
       expect(v).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("alignBenchmarkSeries", () => {
+  it("uses the latest observation on or before each portfolio date and exposes carry-forward dates", () => {
+    const result = alignBenchmarkSeries(
+      ["2026-04-02", "2026-04-03", "2026-04-06"],
+      [
+        { date: "2026-04-02", value: 100 },
+        { date: "2026-04-06", value: 105 },
+      ],
+    );
+
+    expect(result.index).toEqual([100, 100, 105]);
+    expect(result.observationDates).toEqual([
+      "2026-04-02",
+      "2026-04-02",
+      "2026-04-06",
+    ]);
+  });
+
+  it("does not future-fill when the first benchmark observation is later", () => {
+    const result = alignBenchmarkSeries(
+      ["2026-04-01", "2026-04-02", "2026-04-03"],
+      [
+        { date: "2026-04-02", value: 200 },
+        { date: "2026-04-03", value: 204 },
+      ],
+    );
+
+    expect(result.index).toEqual([null, 100, 102]);
+    expect(result.observationDates).toEqual([null, "2026-04-02", "2026-04-03"]);
+  });
+
+  it("normalizes different source dates to the same first portfolio observation date", () => {
+    const portfolioDates = ["2026-04-06", "2026-04-07"];
+    const primary = alignBenchmarkSeries(portfolioDates, [
+      { date: "2026-04-02", value: 50 },
+      { date: "2026-04-07", value: 55 },
+    ]);
+    const secondary = alignBenchmarkSeries(portfolioDates, [
+      { date: "2026-04-06", value: 20_000 },
+      { date: "2026-04-07", value: 21_000 },
+    ]);
+
+    expect(primary.index[0]).toBe(100);
+    expect(primary.index[1]).toBeCloseTo(110);
+    expect(secondary.index[0]).toBe(100);
+    expect(secondary.index[1]).toBeCloseTo(105);
+    expect(primary.observationDates[0]).toBe("2026-04-02");
+    expect(secondary.observationDates[0]).toBe("2026-04-06");
+  });
+
+  it("uses adjusted values so a dividend adjustment is reflected in total return", () => {
+    const result = alignBenchmarkSeries(
+      ["2026-04-01", "2026-04-02"],
+      [
+        { date: "2026-04-01", value: 100 },
+        { date: "2026-04-02", value: 104 },
+      ],
+    );
+
+    expect(result.index).toEqual([100, 104]);
+  });
+
+  it("keeps partial benchmark history explicit", () => {
+    const result = alignBenchmarkSeries(
+      ["2026-04-01", "2026-04-02", "2026-04-03"],
+      [{ date: "2026-04-02", value: 10 }],
+    );
+
+    expect(result.index).toEqual([null, 100, 100]);
+    expect(result.observationDates).toEqual([null, "2026-04-02", "2026-04-02"]);
+  });
+
+  it("returns aligned null arrays for empty or wholly invalid benchmark points", () => {
+    const dates = [
+      "2026-04-01",
+      "2026-04-02",
+      "2026-04-03",
+      "2026-04-04",
+    ];
+    expect(alignBenchmarkSeries(dates, [])).toEqual({
+      index: [null, null, null, null],
+      observationDates: [null, null, null, null],
+    });
+    expect(
+      alignBenchmarkSeries(dates, [
+        { date: "2026-04-01", value: 0 },
+        { date: "2026-04-02", value: -1 },
+        { date: "2026-04-03", value: Number.NaN },
+        { date: "2026-04-04", value: Number.POSITIVE_INFINITY },
+      ]),
+    ).toEqual({
+      index: [null, null, null, null],
+      observationDates: [null, null, null, null],
+    });
+  });
+
+  it.each([
+    {
+      label: "out-of-order portfolio dates",
+      dates: ["2026-04-02", "2026-04-01"],
+      points: [{ date: "2026-04-01", value: 100 }],
+    },
+    {
+      label: "duplicate portfolio dates",
+      dates: ["2026-04-01", "2026-04-01"],
+      points: [{ date: "2026-04-01", value: 100 }],
+    },
+    {
+      label: "out-of-order benchmark dates",
+      dates: ["2026-04-01", "2026-04-02"],
+      points: [
+        { date: "2026-04-02", value: 101 },
+        { date: "2026-04-01", value: 100 },
+      ],
+    },
+    {
+      label: "duplicate benchmark dates",
+      dates: ["2026-04-01", "2026-04-02"],
+      points: [
+        { date: "2026-04-01", value: 100 },
+        { date: "2026-04-01", value: 101 },
+      ],
+    },
+  ])("throws for $label", ({ dates, points }) => {
+    expect(() => alignBenchmarkSeries(dates, points)).toThrow(
+      /strictly increasing/,
+    );
+  });
+});
+
+describe("computeBenchmarkComparison", () => {
+  it("requires two distinct primary observations even when one is carried forward", () => {
+    const result = computeBenchmarkComparison({
+      dates: ["2026-04-01", "2026-04-02", "2026-04-03"],
+      portfolioIndex: [100, 101, 102],
+      primary: {
+        index: [100, 100, 100],
+        observationDates: ["2026-04-01", "2026-04-01", "2026-04-01"],
+      },
+      secondary: null,
+    });
+
+    expect(result.comparison).toEqual({
+      status: "insufficient-data",
+      startDate: "2026-04-01",
+      endDate: "2026-04-01",
+      distinctObservationCount: 1,
+      portfolioReturnPct: null,
+      primaryReturnPct: null,
+      excessReturnPct: null,
+      winRatePct: null,
+      wins: 0,
+      periods: 0,
+    });
+    expect(result.portfolioIndex).toEqual([100, null, null]);
+    expect(result.primaryIndex).toEqual([100, null, null]);
+  });
+
+  it("does not extend returns through stale trailing carry-forward snapshots", () => {
+    const result = computeBenchmarkComparison({
+      dates: ["2026-04-01", "2026-04-02", "2026-04-03", "2026-04-04"],
+      portfolioIndex: [100, 102, 104, 110],
+      primary: {
+        index: [100, 102, 102, 102],
+        observationDates: [
+          "2026-04-01",
+          "2026-04-02",
+          "2026-04-02",
+          "2026-04-02",
+        ],
+      },
+      secondary: {
+        index: [100, 101, 101, 101],
+        observationDates: [
+          "2026-04-01",
+          "2026-04-02",
+          "2026-04-02",
+          "2026-04-02",
+        ],
+      },
+    });
+
+    expect(result.comparison.endDate).toBe("2026-04-02");
+    expect(result.comparison.portfolioReturnPct).toBeCloseTo(2);
+    expect(result.comparison.primaryReturnPct).toBeCloseTo(2);
+    expect(result.comparison.excessReturnPct).toBeCloseTo(0);
+    expect(result.portfolioIndex).toEqual([100, 102, null, null]);
+    expect(result.primaryIndex).toEqual([100, 102, null, null]);
+    expect(result.secondaryIndex).toEqual([100, 101, null, null]);
+  });
+
+  it("uses matching Friday-to-Monday observation checkpoints for win rate and treats ties as non-wins", () => {
+    const result = computeBenchmarkComparison({
+      dates: ["2026-04-03", "2026-04-04", "2026-04-05", "2026-04-06", "2026-04-07"],
+      portfolioIndex: [100, 110, 120, 106, 108.12],
+      primary: {
+        index: [100, 100, 100, 105, 107.1],
+        observationDates: [
+          "2026-04-03",
+          "2026-04-03",
+          "2026-04-03",
+          "2026-04-06",
+          "2026-04-07",
+        ],
+      },
+      secondary: null,
+    });
+
+    expect(result.comparison).toMatchObject({
+      distinctObservationCount: 3,
+      wins: 1,
+      periods: 2,
+      winRatePct: 50,
+    });
+  });
+
+  it("counts a tied observation interval as a period but not a win", () => {
+    const result = computeBenchmarkComparison({
+      dates: ["2026-04-01", "2026-04-02"],
+      portfolioIndex: [100, 105],
+      primary: {
+        index: [100, 105],
+        observationDates: ["2026-04-01", "2026-04-02"],
+      },
+      secondary: null,
+    });
+
+    expect(result.comparison).toMatchObject({
+      status: "measurable",
+      wins: 0,
+      periods: 1,
+      winRatePct: 0,
+    });
+  });
+
+  it("returns insufficient data for a single portfolio snapshot", () => {
+    const result = computeBenchmarkComparison({
+      dates: ["2026-04-01"],
+      portfolioIndex: [100],
+      primary: { index: [100], observationDates: ["2026-04-01"] },
+      secondary: null,
+    });
+    expect(result.comparison.status).toBe("insufficient-data");
+    expect(result.comparison.winRatePct).toBeNull();
+  });
+
+  it("does not rebase a secondary series that starts after the primary base", () => {
+    const result = computeBenchmarkComparison({
+      dates: ["2026-04-01", "2026-04-02", "2026-04-03"],
+      portfolioIndex: [100, 101, 102],
+      primary: {
+        index: [100, 101, 102],
+        observationDates: ["2026-04-01", "2026-04-02", "2026-04-03"],
+      },
+      secondary: {
+        index: [null, 100, 101],
+        observationDates: [null, "2026-04-02", "2026-04-03"],
+      },
+    });
+
+    expect(result.secondaryComparisonStatus).toBe(
+      "not-comparable-at-primary-base",
+    );
+    expect(result.secondaryIndex).toEqual([null, null, null]);
   });
 });

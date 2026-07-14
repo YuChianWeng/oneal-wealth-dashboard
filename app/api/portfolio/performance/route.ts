@@ -4,30 +4,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { toSafeResponse } from "@/lib/errors";
 import { getDailySnapshots } from "@/lib/data/portfolio-repository";
-import { computePerformanceChart } from "@/lib/analytics";
-
-// ---------------------------------------------------------------------------
-// Query param schema
-// ---------------------------------------------------------------------------
+import {
+  benchmarkSeries,
+  type BenchmarkSeries,
+} from "@/lib/data/benchmark-repository";
+import {
+  alignBenchmarkSeries,
+  computeBenchmarkComparison,
+  computePerformanceChart,
+  type PerformanceBenchmark,
+} from "@/lib/analytics";
+import type { BenchmarkSymbol } from "@/lib/schemas/benchmark";
 
 const RangeSchema = z.enum(["1M", "3M", "6M", "YTD", "1Y", "ALL"]);
-
 const QuerySchema = z.object({
   range: RangeSchema.optional().default("1Y"),
 });
 
-/**
- * GET /api/portfolio/performance?range=1Y
- *
- * Returns performance time-series: portfolio index (base 100),
- * benchmark index, date labels, and raw market values.
- */
+/** GET /api/portfolio/performance?range=1Y */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    const { searchParams } = request.nextUrl;
-
     const parsed = QuerySchema.safeParse({
-      range: searchParams.get("range") ?? "1Y",
+      range: request.nextUrl.searchParams.get("range") ?? "1Y",
     });
 
     if (!parsed.success) {
@@ -47,11 +45,31 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const since = rangeToSince(parsed.data.range);
-    const snapshotsResult = getDailySnapshots(since);
-
+    const snapshotsResult = getDailySnapshots(rangeToSince(parsed.data.range));
     const snapshots = snapshotsResult.ok ? snapshotsResult.value : [];
     const chart = computePerformanceChart(snapshots);
+    const loadedPrimary = loadBenchmark("0050.TW", chart.dates);
+    const loadedSecondary = loadBenchmark("^TWII", chart.dates);
+    const comparisonResult = computeBenchmarkComparison({
+      dates: chart.dates,
+      portfolioIndex: chart.portfolioIndex,
+      primary: loadedPrimary,
+      secondary: loadedSecondary.source === null ? null : loadedSecondary,
+    });
+    const portfolioComparisonIndex = comparisonResult.portfolioIndex;
+    const primary = {
+      ...loadedPrimary,
+      index: comparisonResult.primaryIndex,
+      comparisonStatus:
+        loadedPrimary.source === null
+          ? ("source-unavailable" as const)
+          : ("comparable" as const),
+    };
+    const secondary = {
+      ...loadedSecondary,
+      index: comparisonResult.secondaryIndex,
+      comparisonStatus: comparisonResult.secondaryComparisonStatus,
+    };
     const cashFlowEvents = snapshots
       .filter((snapshot) => snapshot.externalCashFlow !== 0)
       .map((snapshot) => ({
@@ -71,6 +89,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         version: 1,
         data: {
           ...chart,
+          portfolioComparisonIndex,
+          benchmarks: { primary, secondary },
+          comparison: comparisonResult.comparison,
+          excessReturnVs0050: comparisonResult.comparison.excessReturnPct,
+          metadata: {
+            benchmarkIndex: {
+              status: "deprecated",
+              derivation: "snapshot-derived",
+              isPrimary: false,
+              replacement: "benchmarks.primary",
+            },
+          },
           audit: {
             method: "modified-dietz-chain-linked-v1",
             eventCount: cashFlowEvents.length,
@@ -86,8 +116,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         headers: { "Cache-Control": "private, no-store" },
       },
     );
-  } catch (err) {
-    const safe = toSafeResponse(err);
+  } catch (error) {
+    const safe = toSafeResponse(error);
     return NextResponse.json(
       { version: 1, error: safe },
       {
@@ -98,35 +128,104 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
+function loadBenchmark(
+  symbol: BenchmarkSymbol,
+  portfolioDates: string[],
+): PerformanceBenchmark {
+  const result = benchmarkSeries(symbol);
+  if (!result.ok) return unavailableBenchmark(symbol, portfolioDates);
+
+  const series: BenchmarkSeries = result.value;
+  const aligned = alignBenchmarkSeries(
+    portfolioDates,
+    series.points.map((point) => ({
+      date: point.date,
+      value: symbol === "0050.TW" ? point.adjustedClose : point.close,
+    })),
+  );
+
+  return {
+    symbol,
+    name: series.name,
+    basis: series.basis,
+    freshness: series.freshness,
+    latestDate: series.latestDate,
+    source: series.source,
+    sourceVersion: series.sourceVersion,
+    fetchedAt: series.fetchedAt,
+    exchangeTimezone: series.exchangeTimezone,
+    expectedLatestDate: series.expectedLatestDate,
+    warnings: series.warnings,
+    comparisonStatus: "comparable",
+    ...aligned,
+  };
+}
+
+function unavailableBenchmark(
+  symbol: BenchmarkSymbol,
+  portfolioDates: string[],
+): PerformanceBenchmark {
+  const unavailableAlignment = {
+    index: portfolioDates.map(() => null),
+    observationDates: portfolioDates.map(() => null),
+  };
+  return symbol === "0050.TW"
+    ? {
+        symbol,
+        name: "元大台灣50",
+        basis: "adjusted-close-total-return-proxy",
+        freshness: "unavailable",
+        latestDate: null,
+        source: null,
+        sourceVersion: null,
+        fetchedAt: null,
+        exchangeTimezone: null,
+        expectedLatestDate: null,
+        warnings: ["Benchmark series unavailable"],
+        comparisonStatus: "source-unavailable",
+        ...unavailableAlignment,
+      }
+    : {
+        symbol,
+        name: "TAIEX 加權指數",
+        basis: "price-index",
+        freshness: "unavailable",
+        latestDate: null,
+        source: null,
+        sourceVersion: null,
+        fetchedAt: null,
+        exchangeTimezone: null,
+        expectedLatestDate: null,
+        warnings: ["Benchmark series unavailable"],
+        comparisonStatus: "source-unavailable",
+        ...unavailableAlignment,
+      };
+}
 
 function rangeToSince(range: z.infer<typeof RangeSchema>): string {
   const now = new Date();
   switch (range) {
     case "1M": {
-      const d = new Date(now);
-      d.setMonth(d.getMonth() - 1);
-      return d.toISOString().slice(0, 10);
+      const date = new Date(now);
+      date.setMonth(date.getMonth() - 1);
+      return date.toISOString().slice(0, 10);
     }
     case "3M": {
-      const d = new Date(now);
-      d.setMonth(d.getMonth() - 3);
-      return d.toISOString().slice(0, 10);
+      const date = new Date(now);
+      date.setMonth(date.getMonth() - 3);
+      return date.toISOString().slice(0, 10);
     }
     case "6M": {
-      const d = new Date(now);
-      d.setMonth(d.getMonth() - 6);
-      return d.toISOString().slice(0, 10);
+      const date = new Date(now);
+      date.setMonth(date.getMonth() - 6);
+      return date.toISOString().slice(0, 10);
     }
-    case "YTD": {
+    case "YTD":
       return `${now.getFullYear()}-01-01`;
-    }
     case "1Y": {
-      const d = new Date(now);
-      d.setFullYear(d.getFullYear() - 1);
-      return d.toISOString().slice(0, 10);
+      const date = new Date(now);
+      date.setFullYear(date.getFullYear() - 1);
+      return date.toISOString().slice(0, 10);
     }
     case "ALL":
     default:

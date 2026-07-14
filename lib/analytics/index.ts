@@ -8,7 +8,11 @@
 export { computeKpis } from "./kpis";
 export { computeCashFlow } from "./cashflow";
 export { computePerformanceChart } from "./performance";
-export { computePerformanceSeries } from "./portfolio-performance";
+export {
+  alignBenchmarkSeries,
+  computeBenchmarkComparison,
+  computePerformanceSeries,
+} from "./portfolio-performance";
 export { generateInsights } from "./insights";
 export {
   computeAllocationByStock,
@@ -33,6 +37,14 @@ export type {
   PerformanceChartData,
   PerformanceSeriesResult,
   AnalyticsSnapshotPoint,
+  AlignedBenchmarkSeries,
+  BenchmarkComparisonInput,
+  BenchmarkComparisonResult,
+  BenchmarkComparisonStatus,
+  BenchmarkComparisonViewModel,
+  BenchmarkValuePoint,
+  PerformanceBenchmark,
+  SecondaryComparisonStatus,
   AllocationBucket,
   AllocationResult,
   NetWorthPoint,

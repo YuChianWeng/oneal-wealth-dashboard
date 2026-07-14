@@ -22,6 +22,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { useApi } from "@/lib/hooks/use-api";
 import { formatTWD, formatPercent } from "@/lib/format";
+import type {
+  BenchmarkComparisonViewModel,
+  PerformanceBenchmark,
+} from "@/lib/analytics";
+import {
+  PerformanceChartTooltip,
+  type PerformanceChartPoint,
+} from "./chart-tooltip";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,8 +38,23 @@ import { formatTWD, formatPercent } from "@/lib/format";
 interface PerformanceResponse {
   dates: string[];
   portfolioIndex: number[];
+  portfolioComparisonIndex: Array<number | null>;
   benchmarkIndex: number[];
   rawMarketValue: number[];
+  benchmarks: {
+    primary: PerformanceBenchmark;
+    secondary: PerformanceBenchmark;
+  };
+  comparison: BenchmarkComparisonViewModel;
+  excessReturnVs0050: number | null;
+  metadata: {
+    benchmarkIndex: {
+      status: "deprecated";
+      derivation: "snapshot-derived";
+      isPrimary: false;
+      replacement: "benchmarks.primary";
+    };
+  };
   audit: {
     method: "modified-dietz-chain-linked-v1";
     eventCount: number;
@@ -77,76 +100,23 @@ function computeMaxDrawdown(values: number[]): number {
   return maxDd * 100;
 }
 
-function computeWinRate(portfolio: number[], benchmark: number[]): number {
-  if (portfolio.length < 2) return 0;
-  let wins = 0;
-  let total = 0;
-  for (let i = 1; i < portfolio.length; i++) {
-    const pRet = (portfolio[i] - portfolio[i - 1]) / (portfolio[i - 1] || 1);
-    const bRet =
-      benchmark.length > i && benchmark[i - 1] > 0
-        ? (benchmark[i] - benchmark[i - 1]) / (benchmark[i - 1] || 1)
-        : 0;
-    total++;
-    if (pRet > bRet) wins++;
-  }
-  return total > 0 ? (wins / total) * 100 : 0;
-}
-
 // ---------------------------------------------------------------------------
 // Chart data builder
 // ---------------------------------------------------------------------------
 
-interface ChartPoint {
-  date: string;
-  label: string;
-  portfolio: number;
-  benchmark: number | null;
-  marketValue: number;
-}
-
-function buildChartData(data: PerformanceResponse): ChartPoint[] {
-  return data.dates.map((d, i) => ({
-    date: d,
-    label: formatDateLabel(d),
-    portfolio: data.portfolioIndex[i] ?? 0,
-    benchmark: data.benchmarkIndex[i] ?? null,
-    marketValue: data.rawMarketValue[i] ?? 0,
+function buildChartData(data: PerformanceResponse): PerformanceChartPoint[] {
+  return data.dates.map((date, index) => ({
+    date,
+    label: formatDateLabel(date),
+    portfolio: data.portfolioComparisonIndex[index] ?? null,
+    primaryBenchmark: data.benchmarks.primary.index[index] ?? null,
+    secondaryBenchmark: data.benchmarks.secondary.index[index] ?? null,
+    primaryObservationDate:
+      data.benchmarks.primary.observationDates[index] ?? null,
+    secondaryObservationDate:
+      data.benchmarks.secondary.observationDates[index] ?? null,
+    marketValue: data.rawMarketValue[index] ?? 0,
   }));
-}
-
-// ---------------------------------------------------------------------------
-// Tooltip
-// ---------------------------------------------------------------------------
-
-function ChartTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number; color: string }>;
-  label?: string;
-}) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-ds-md border border-dashboard-border bg-dashboard-surface px-3 py-2 shadow-ds-card">
-      <p className="mb-1 text-[11px] text-dashboard-faint">{label}</p>
-      {payload.map((entry) => (
-        <p
-          key={entry.name}
-          className="text-[12px] font-medium"
-          style={{ color: entry.color }}
-        >
-          {entry.name === "marketValue"
-            ? `市值 ${formatTWD(entry.value)}`
-            : entry.name === "benchmark"
-              ? `TAIEX ${entry.value.toFixed(1)}`
-              : `組合 ${entry.value.toFixed(1)}`}
-        </p>
-      ))}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -214,12 +184,27 @@ export default function PerformancePage() {
   // ── Derived metrics ───────────────────────────────────────────────────
   const chartData = buildChartData(data);
   const portfolioReturn = computeReturn(data.portfolioIndex);
-  const benchmarkReturn =
-    data.benchmarkIndex.length > 0 ? computeReturn(data.benchmarkIndex) : null;
   const maxDrawdown = computeMaxDrawdown(data.portfolioIndex);
-  const winRate = computeWinRate(data.portfolioIndex, data.benchmarkIndex);
+  const comparison = data.comparison;
+  const comparisonMeasurable = comparison.status === "measurable";
+  const comparisonInterval =
+    comparison.startDate && comparison.endDate
+      ? `${comparison.startDate} 至 ${comparison.endDate}`
+      : "不可用";
+  const fullInterval = `${data.dates[0]} 至 ${data.dates[data.dates.length - 1]}`;
+  const secondaryLatestIndex =
+    data.benchmarks.secondary.comparisonStatus === "comparable"
+      ? ([...data.benchmarks.secondary.index]
+          .reverse()
+          .find((value): value is number => value !== null) ?? null)
+      : null;
 
-  const hasBenchmark = data.benchmarkIndex.length > 0;
+  const hasPrimaryBenchmark = data.benchmarks.primary.index.some(
+    (value) => value !== null,
+  );
+  const hasSecondaryBenchmark = data.benchmarks.secondary.index.some(
+    (value) => value !== null,
+  );
   const latestMv =
     data.rawMarketValue.length > 0
       ? data.rawMarketValue[data.rawMarketValue.length - 1]
@@ -236,41 +221,92 @@ export default function PerformancePage() {
       {/* ── KPI cards ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <MetricCard
-          label="組合報酬"
+          label="組合報酬（完整區間）"
           value={formatPercent(portfolioReturn, true)}
           trend={portfolioReturn >= 0 ? "up" : "down"}
+          description={`完整區間：${fullInterval}`}
         />
         <MetricCard
-          label={hasBenchmark ? "TAIEX 報酬" : "基準報酬"}
+          label="0050 總報酬（比較區間）"
           value={
-            benchmarkReturn != null
-              ? formatPercent(benchmarkReturn, true)
-              : "—%"
+            comparisonMeasurable && comparison.primaryReturnPct != null
+              ? formatPercent(comparison.primaryReturnPct, true)
+              : "—"
           }
           trend={
-            benchmarkReturn != null
-              ? benchmarkReturn >= 0
+            !comparisonMeasurable || comparison.primaryReturnPct == null
+              ? "neutral"
+              : comparison.primaryReturnPct >= 0
                 ? "up"
                 : "down"
-              : "neutral"
           }
+          description={`比較區間：${comparisonInterval}`}
         />
         <MetricCard
-          label="最大回撤"
+          label="超額報酬 vs 0050（比較區間）"
+          value={
+            comparisonMeasurable && comparison.excessReturnPct != null
+              ? formatPercent(comparison.excessReturnPct, true)
+              : "—"
+          }
+          trend={
+            !comparisonMeasurable || comparison.excessReturnPct == null
+              ? "neutral"
+              : comparison.excessReturnPct >= 0
+                ? "up"
+                : "down"
+          }
+          description={`比較區間：${comparisonInterval}`}
+        />
+        <MetricCard
+          label="最大回撤（完整區間）"
           value={formatPercent(maxDrawdown, true)}
           trend="down"
+          description={`完整區間：${fullInterval}`}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <MetricCard
+          label="贏率 vs 0050（比較區間）"
+          value={
+            comparisonMeasurable && comparison.winRatePct != null
+              ? `${comparison.winRatePct.toFixed(0)}%（${comparison.wins}/${comparison.periods}）`
+              : "—"
+          }
+          trend={
+            !comparisonMeasurable || comparison.winRatePct == null
+              ? "neutral"
+              : comparison.winRatePct >= 50
+                ? "up"
+                : "down"
+          }
+          description={`比較區間：${comparisonInterval}；僅計算 ${comparison.distinctObservationCount} 個不同觀測日`}
         />
         <MetricCard
-          label="贏率 vs TAIEX"
-          value={`${winRate.toFixed(0)}%`}
-          trend={winRate >= 50 ? "up" : "down"}
+          label="TAIEX 正規化指數（比較區間）"
+          value={
+            secondaryLatestIndex != null ? secondaryLatestIndex.toFixed(1) : "—"
+          }
+          trend="neutral"
+          description={`比較狀態：${comparisonStatusLabel(data.benchmarks.secondary.comparisonStatus)}；指數以 100 為共同基期，非新台幣`}
         />
       </div>
 
       {/* ── Portfolio vs Benchmark line chart ────────────────────── */}
       <Card
         header={
-          <h2 className="text-[15px] font-semibold">組合 vs TAIEX 指數</h2>
+          <div>
+            <h2 className="text-[15px] font-semibold">
+              組合 vs 0050 正規化指數（TAIEX 次要參考）
+            </h2>
+            <p className="mt-1 text-[11px] font-normal text-dashboard-faint">
+              比較區間：{comparisonInterval}；共同基期指數 = 100；組合同期報酬：
+              {comparisonMeasurable && comparison.portfolioReturnPct != null
+                ? formatPercent(comparison.portfolioReturnPct, true)
+                : "—"}
+            </p>
+          </div>
         }
       >
         <div className="h-[340px] w-full">
@@ -298,7 +334,7 @@ export default function PerformancePage() {
                 domain={["auto", "auto"]}
                 tickFormatter={(v: number) => v.toFixed(0)}
               />
-              <Tooltip content={<ChartTooltip />} />
+              <Tooltip content={<PerformanceChartTooltip />} />
               <Legend
                 wrapperStyle={{ fontSize: "12px", color: "var(--color-muted)" }}
               />
@@ -311,20 +347,59 @@ export default function PerformancePage() {
                 dot={false}
                 activeDot={{ r: 4, strokeWidth: 0 }}
               />
-              {hasBenchmark && (
+              {hasPrimaryBenchmark && (
                 <Line
                   type="monotone"
-                  dataKey="benchmark"
-                  name="benchmark"
+                  dataKey="primaryBenchmark"
+                  name="primaryBenchmark"
                   stroke="var(--color-muted)"
-                  strokeWidth={1.5}
+                  strokeWidth={1.8}
                   strokeDasharray="5 3"
                   dot={false}
                   activeDot={{ r: 3, strokeWidth: 0 }}
+                  connectNulls={false}
+                />
+              )}
+              {hasSecondaryBenchmark && (
+                <Line
+                  type="monotone"
+                  dataKey="secondaryBenchmark"
+                  name="secondaryBenchmark"
+                  stroke="var(--color-faint)"
+                  strokeWidth={1}
+                  strokeDasharray="2 4"
+                  dot={false}
+                  activeDot={{ r: 3, strokeWidth: 0 }}
+                  connectNulls={false}
                 />
               )}
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card
+        header={
+          <div>
+            <h2 className="text-[15px] font-semibold">基準資料狀態與來源</h2>
+            <p className="mt-1 text-[11px] font-normal text-dashboard-faint">
+              比較計算狀態：
+              {comparisonMeasurable
+                ? "可衡量"
+                : "觀測資料不足，報酬與贏率不提供"}
+            </p>
+          </div>
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <BenchmarkProvenance
+            benchmark={data.benchmarks.primary}
+            role="主要基準"
+          />
+          <BenchmarkProvenance
+            benchmark={data.benchmarks.secondary}
+            role="次要參考"
+          />
         </div>
       </Card>
 
@@ -368,7 +443,7 @@ export default function PerformancePage() {
                   return v.toString();
                 }}
               />
-              <Tooltip content={<ChartTooltip />} />
+              <Tooltip content={<PerformanceChartTooltip />} />
               <Area
                 type="monotone"
                 dataKey="marketValue"
@@ -447,13 +522,98 @@ export default function PerformancePage() {
             </table>
           </div>
         )}
-        {!hasBenchmark && (
-          <p className="mt-3 text-[12px] text-dashboard-faint">
-            TAIEX 基準指數資料尚不可用 — 僅顯示組合自身績效。
-          </p>
-        )}
       </Card>
     </AppShell>
+  );
+}
+
+function comparisonStatusLabel(
+  status: PerformanceBenchmark["comparisonStatus"],
+): string {
+  switch (status) {
+    case "comparable":
+      return "可在主要基期比較";
+    case "source-unavailable":
+      return "來源不可用";
+    case "not-comparable-at-primary-base":
+      return "來源可用，但無法在主要基期比較";
+  }
+}
+
+function freshnessLabel(freshness: PerformanceBenchmark["freshness"]): string {
+  switch (freshness) {
+    case "fresh":
+      return "最新";
+    case "stale":
+      return "資料過期";
+    case "unavailable":
+      return "來源不可用";
+  }
+}
+
+function basisLabel(basis: PerformanceBenchmark["basis"]): string {
+  return basis === "adjusted-close-total-return-proxy"
+    ? "調整後收盤價（總報酬代理）"
+    : "價格指數";
+}
+
+function BenchmarkProvenance({
+  benchmark,
+  role,
+}: {
+  benchmark: PerformanceBenchmark;
+  role: string;
+}) {
+  const fields = [
+    ["代號 / 計算基礎", `${benchmark.symbol} / ${basisLabel(benchmark.basis)}`],
+    ["資料新鮮度", freshnessLabel(benchmark.freshness)],
+    ["最新資料日", benchmark.latestDate ?? "—"],
+    ["預期最新日", benchmark.expectedLatestDate ?? "—"],
+    [
+      "來源 / 版本",
+      benchmark.source
+        ? `${benchmark.source}${benchmark.sourceVersion ? ` / ${benchmark.sourceVersion}` : ""}`
+        : "—",
+    ],
+    ["擷取時間", benchmark.fetchedAt ?? "—"],
+    ["比較狀態", comparisonStatusLabel(benchmark.comparisonStatus)],
+  ];
+
+  return (
+    <section
+      className="rounded-ds-md border border-dashboard-border bg-dashboard-chip/30 p-4"
+      aria-label={`${benchmark.name} 資料來源`}
+    >
+      <h3 className="text-[13px] font-semibold">
+        {benchmark.name}（{role}）
+      </h3>
+      <dl className="mt-3 space-y-2 text-[11px]">
+        {fields.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-4">
+            <dt className="shrink-0 text-dashboard-faint">{label}</dt>
+            <dd className="break-all text-right font-mono text-dashboard-muted">
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {benchmark.warnings.length > 0 ? (
+        <div className="mt-3 border-t border-dashboard-border pt-2">
+          <p className="text-[11px] font-medium text-dashboard-faint">
+            資料警示
+          </p>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] text-dashboard-faint">
+            {benchmark.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="mt-3 border-t border-dashboard-border pt-2 text-[11px] text-dashboard-faint">
+          資料警示：無
+        </p>
+      )}
+    </section>
   );
 }
 
