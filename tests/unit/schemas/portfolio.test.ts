@@ -101,6 +101,7 @@ describe("TradeRecordSchema", () => {
     side: "buy" as const,
     shares: 500,
     price: 590,
+    netCashflow: -295000,
   };
 
   it("accepts valid trade record", () => {
