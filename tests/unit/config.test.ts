@@ -31,6 +31,7 @@ async function loadConfig(env: Record<string, string | undefined>) {
   vi.stubEnv("APP_TIMEZONE", env.APP_TIMEZONE ?? "");
   vi.stubEnv("APP_ORIGIN", env.APP_ORIGIN ?? "");
   vi.stubEnv("PORT", env.PORT ?? "");
+  vi.stubEnv("INSIGHT_CASH_STALE_DAYS", env.INSIGHT_CASH_STALE_DAYS ?? "");
 
   return import("@/lib/config");
 }
@@ -62,16 +63,50 @@ describe("config validation", () => {
 
   it("uses defaults when optional env vars are missing", async () => {
     const env = validEnv();
-    // Don't set APP_TIMEZONE, APP_ORIGIN, PORT
+    // Don't set APP_TIMEZONE, APP_ORIGIN, PORT, INSIGHT_CASH_STALE_DAYS
     vi.stubEnv("APP_TIMEZONE", "");
     vi.stubEnv("APP_ORIGIN", "");
     vi.stubEnv("PORT", "");
+    vi.stubEnv("INSIGHT_CASH_STALE_DAYS", "");
 
     const { config } = await loadConfig(env);
     expect(config.timezone).toBe("Asia/Taipei");
     expect(config.origin).toBe("http://localhost:3003");
     expect(config.port).toBe(3003);
+    expect(config.insightCashStaleDays).toBe(7);
   });
+
+  it("accepts a positive integer cash stale threshold", async () => {
+    const { config } = await loadConfig({
+      ...validEnv(),
+      INSIGHT_CASH_STALE_DAYS: "14",
+    });
+
+    expect(config.insightCashStaleDays).toBe(14);
+    expect(
+      config.warnings.some((warning) =>
+        warning.includes("INSIGHT_CASH_STALE_DAYS"),
+      ),
+    ).toBe(false);
+  });
+
+  it.each(["0", "-1", "1.5", "1e2", " 2 ", "9007199254740992", "not-a-number"])(
+    "falls back safely for invalid cash stale threshold %s",
+    async (rawValue) => {
+      const { config } = await loadConfig({
+        ...validEnv(),
+        INSIGHT_CASH_STALE_DAYS: rawValue,
+      });
+
+      expect(config.insightCashStaleDays).toBe(7);
+      const warning = config.warnings.find((candidate) =>
+        candidate.includes("INSIGHT_CASH_STALE_DAYS"),
+      );
+      expect(warning).toBeDefined();
+      expect(warning).not.toContain(rawValue);
+      expect(warning).not.toContain("/home/");
+    },
+  );
 
   it("warns when FINANCE_DB_PATH is outside data root", async () => {
     const { config } = await loadConfig({
@@ -149,6 +184,7 @@ describe("config type exports", () => {
     expect(config).toHaveProperty("timezone");
     expect(config).toHaveProperty("origin");
     expect(config).toHaveProperty("port");
+    expect(config).toHaveProperty("insightCashStaleDays");
     expect(config).toHaveProperty("vaultRoot");
     expect(config).toHaveProperty("dataRoot");
     expect(config).toHaveProperty("warnings");

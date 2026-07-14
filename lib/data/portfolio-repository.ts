@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 /**
  * Portfolio repository — read-only access to position, trade, and snapshot data.
  *
@@ -89,16 +91,6 @@ function strictTradeNumber(value: unknown): number | undefined {
   if (typeof value !== "number" && typeof value !== "string") return Number.NaN;
   const parsed = typeof value === "number" ? value : Number(value.trim());
   return Number.isFinite(parsed) ? parsed : Number.NaN;
-}
-
-function firstValidIsoDate(...values: unknown[]): string {
-  for (const value of values) {
-    const date = isoDateOrEmpty(value);
-    if (/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date)) {
-      return date;
-    }
-  }
-  return "";
 }
 
 function positionNameFromPath(path: string, symbol: string): string {
@@ -246,6 +238,151 @@ function tradeBusinessId(
   ].join(":");
 }
 
+/** A safe, public reference to a transaction with an integrity finding. */
+export interface TradeIntegrityDiagnostic {
+  id: string;
+  symbol: string;
+}
+
+/** Read-only integrity findings that strict trade parsing cannot return. */
+export interface TradeIntegrityDiagnostics {
+  missingNetCashflow: TradeIntegrityDiagnostic[];
+}
+
+function publicTradeSymbol(value: unknown): string {
+  const symbol = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return /^[A-Z0-9]{1,10}(?:\.[A-Z0-9]{1,6})?$/.test(symbol)
+    ? symbol
+    : "UNKNOWN";
+}
+
+function safeBusinessToken(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const token = value.trim();
+  return /^[A-Za-z0-9._-]{1,80}$/.test(token) ? token : undefined;
+}
+
+function finiteTradeNumber(value: unknown, fallback = 0): number {
+  const parsed = strictTradeNumber(value);
+  return parsed !== undefined && Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function diagnosticTradeBusinessId(
+  fm: Record<string, unknown>,
+  symbol: string,
+): string {
+  const rawSettlement = firstPresent(
+    fm.settlementDate,
+    fm["settlement-date"],
+    fm.settlement_date,
+  );
+  const side = String(fm.side ?? fm.Side ?? "")
+    .trim()
+    .toLowerCase();
+  const orderId = safeBusinessToken(
+    firstPresent(fm.orderId, fm["order-id"], fm.order_id),
+  );
+  const broker = safeBusinessToken(fm.broker ?? fm.Broker);
+
+  const internalId = tradeBusinessId(
+    {
+      date: exactIsoDateOrEmpty(
+        firstPresent(fm.tradeDate, fm["trade-date"], fm.trade_date, fm.date),
+      ),
+      ...(rawSettlement === undefined
+        ? {}
+        : { settlementDate: exactIsoDateOrEmpty(rawSettlement) }),
+      symbol,
+      side: side === "buy" || side === "sell" ? side : "unknown",
+      shares: finiteTradeNumber(firstPresent(fm.shares, fm.Shares)),
+      price: finiteTradeNumber(firstPresent(fm.price, fm.Price)),
+      grossAmount: finiteTradeNumber(
+        firstPresent(fm.grossAmount, fm["gross-amount"], fm.gross_amount),
+      ),
+      feeTax: finiteTradeNumber(
+        firstPresent(fm.feeTax, fm["fee-tax"], fm.fee_tax),
+      ),
+    },
+    {
+      ...(orderId ? { orderId } : {}),
+      ...(broker ? { broker } : {}),
+    },
+  );
+  const digest = createHash("sha256").update(internalId, "utf8").digest("hex");
+  return `trade-${digest}`;
+}
+
+function tradeIntegrityFinding(
+  fm: Record<string, unknown>,
+): TradeIntegrityDiagnostic | null {
+  const netCashflow = strictTradeNumber(
+    firstPresent(fm.netCashflow, fm["net-cashflow"], fm.net_cashflow),
+  );
+  if (
+    netCashflow !== undefined &&
+    Number.isFinite(netCashflow) &&
+    netCashflow !== 0
+  ) {
+    return null;
+  }
+
+  const symbol = publicTradeSymbol(fm.symbol ?? fm.ticker ?? fm.Symbol);
+  return { id: diagnosticTradeBusinessId(fm, symbol), symbol };
+}
+
+function sortedTradeIntegrityDiagnostics(
+  findings: Map<string, TradeIntegrityDiagnostic>,
+): TradeIntegrityDiagnostics {
+  return {
+    missingNetCashflow: [...findings.values()].sort(
+      (a, b) => a.id.localeCompare(b.id) || a.symbol.localeCompare(b.symbol),
+    ),
+  };
+}
+
+export interface TradeInsightSources {
+  trades: Result<TradeRecord[], SourceError>;
+  tradeIntegrity: TradeIntegrityDiagnostics;
+}
+
+/**
+ * Read transaction notes once for the Insights layer. Strict trade parsing and
+ * typed diagnostics remain separate results over the same source snapshot.
+ */
+export function loadTradeInsightSources(): Result<
+  TradeInsightSources,
+  SourceError
+> {
+  const files = listNotes(TRANSACTIONS_DIR);
+  if (!files.ok) return files;
+
+  const trades: TradeRecord[] = [];
+  const findings = new Map<string, TradeIntegrityDiagnostic>();
+  let strictError: SourceError | null = null;
+
+  for (const file of files.value) {
+    const note = readNote(file);
+    if (!note.ok) return err(note.error);
+    if (!isTransaction(note.value.frontmatter)) continue;
+
+    const finding = tradeIntegrityFinding(note.value.frontmatter);
+    if (finding) findings.set(finding.id, finding);
+
+    const parsed = parseTrade(note.value);
+    if (parsed.ok) {
+      trades.push(parsed.value);
+    } else if (!strictError) {
+      strictError = parsed.error;
+    }
+  }
+
+  trades.sort((a, b) => b.date.localeCompare(a.date));
+  return ok({
+    trades: strictError ? err(strictError) : ok(trades),
+    tradeIntegrity: sortedTradeIntegrityDiagnostics(findings),
+  });
+}
+
 /**
  * Convert a raw transaction note into a validated TradeRecord.
  */
@@ -268,7 +405,9 @@ export function parseTrade(note: RawNote): Result<TradeRecord, SourceError> {
     fm.settlement_date,
   );
   const settlementDate =
-    rawSettlement === undefined ? undefined : exactIsoDateOrEmpty(rawSettlement);
+    rawSettlement === undefined
+      ? undefined
+      : exactIsoDateOrEmpty(rawSettlement);
   const rawTradeWithoutId = {
     date: exactIsoDateOrEmpty(
       firstPresent(fm.tradeDate, fm["trade-date"], fm.trade_date, fm.date),
@@ -505,6 +644,35 @@ export function listAllTrades(): Result<TradeRecord[], SourceError> {
   results.sort((a, b) => b.date.localeCompare(a.date));
 
   return ok(results);
+}
+
+/**
+ * Scan transaction frontmatter for net-cashflow integrity findings.
+ *
+ * This intentionally bypasses strict TradeRecord parsing so malformed cashflow
+ * data remains observable without weakening the fail-closed trade APIs.
+ */
+export function tradeIntegrityDiagnostics(): Result<
+  TradeIntegrityDiagnostics,
+  SourceError
+> {
+  const files = listNotes(TRANSACTIONS_DIR);
+  if (!files.ok) return files;
+
+  const findings = new Map<string, TradeIntegrityDiagnostic>();
+
+  for (const file of files.value) {
+    const note = readNote(file);
+    if (!note.ok) return err(note.error);
+
+    const fm = note.value.frontmatter;
+    if (!isTransaction(fm)) continue;
+
+    const finding = tradeIntegrityFinding(fm);
+    if (finding) findings.set(finding.id, finding);
+  }
+
+  return ok(sortedTradeIntegrityDiagnostics(findings));
 }
 
 /**

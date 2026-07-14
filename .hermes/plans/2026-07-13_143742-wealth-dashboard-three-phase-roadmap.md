@@ -513,6 +513,8 @@ Move win rate and TAIEX to secondary detail cards.
 
 **Objective:** Surface trust failures in the existing Insights workflow.
 
+- [x] **Status:** Complete and validated.
+
 **Files:**
 
 - Modify: `lib/analytics/insights.ts`

@@ -63,7 +63,9 @@ describe("investmentReconciliation failure modes", () => {
 
   it("propagates safe upstream source errors", () => {
     mockPerformance.mockReturnValue(
-      err(new SourceError("Snapshot source unavailable", "SNAPSHOT_UNAVAILABLE")),
+      err(
+        new SourceError("Snapshot source unavailable", "SNAPSHOT_UNAVAILABLE"),
+      ),
     );
 
     const result = investmentReconciliation();
@@ -75,7 +77,9 @@ describe("investmentReconciliation failure modes", () => {
   });
 
   it("fails safely when no usable non-seed snapshot exists", () => {
-    mockPerformance.mockReturnValue(ok({ points: [{ ...point(), isSeed: true }] }));
+    mockPerformance.mockReturnValue(
+      ok({ points: [{ ...point(), isSeed: true }] }),
+    );
 
     const result = investmentReconciliation();
 
@@ -98,14 +102,18 @@ describe("investmentReconciliation failure modes", () => {
 
       expect(result.ok, field).toBe(false);
       if (result.ok) continue;
-      expect(result.error.code, field).toBe("RECONCILIATION_SOURCE_UNAVAILABLE");
+      expect(result.error.code, field).toBe(
+        "RECONCILIATION_SOURCE_UNAVAILABLE",
+      );
     }
   });
 
   it("propagates transaction repository failures without leaking paths", () => {
     mockPerformance.mockReturnValue(ok({ points: [point()] }));
     mockTrades.mockReturnValue(
-      err(new SourceError("Transaction source is invalid", "VAULT_INVALID_TRADE")),
+      err(
+        new SourceError("Transaction source is invalid", "VAULT_INVALID_TRADE"),
+      ),
     );
 
     const result = investmentReconciliation();
@@ -146,9 +154,12 @@ describe("investmentReconciliation failure modes", () => {
     if (!result.ok) return;
     expect(result.value.pendingSettlements).toEqual([]);
     expect(result.value.status).toBe("attention");
-    expect(result.value.warnings).toEqual([
-      "Trade order:cathay:k07Dd: duplicate trade id; all copies excluded",
-    ]);
+    expect(result.value.warnings).toHaveLength(1);
+    expect(result.value.warnings[0]).toMatch(
+      /^Trade trade-[0-9a-f]{64}: duplicate trade id; all copies excluded$/,
+    );
+    expect(result.value.warnings[0]).not.toContain("cathay");
+    expect(result.value.warnings[0]).not.toContain("k07Dd");
   });
 
   it("reports every snapshot recomputation mismatch", () => {

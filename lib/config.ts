@@ -43,11 +43,26 @@ const OBSIDIAN_VAULT_PATH = requiredEnv("OBSIDIAN_VAULT_PATH");
 const APP_TIMEZONE = optionalEnv("APP_TIMEZONE", "Asia/Taipei");
 const APP_ORIGIN = optionalEnv("APP_ORIGIN", "http://localhost:3003");
 const PORT = parseInt(optionalEnv("PORT", "3003"), 10);
+const INSIGHT_CASH_STALE_DAYS_RAW = optionalEnv("INSIGHT_CASH_STALE_DAYS", "7");
 
 const VAULT_ROOT = "/home/ubuntu/ObsidianVault";
 const DATA_ROOT = "/home/ubuntu/data/finance";
 
 const warnings: string[] = [];
+
+const parsedInsightCashStaleDays = Number(INSIGHT_CASH_STALE_DAYS_RAW);
+const hasValidInsightCashStaleDays =
+  /^[1-9]\d*$/.test(INSIGHT_CASH_STALE_DAYS_RAW) &&
+  Number.isSafeInteger(parsedInsightCashStaleDays);
+const INSIGHT_CASH_STALE_DAYS = hasValidInsightCashStaleDays
+  ? parsedInsightCashStaleDays
+  : 7;
+if (!hasValidInsightCashStaleDays) {
+  const msg =
+    "INSIGHT_CASH_STALE_DAYS must be a positive integer — using default value 7";
+  console.warn(`[Config] ${msg}`);
+  warnings.push(msg);
+}
 
 if (!isInside(FINANCE_DB_PATH, DATA_ROOT)) {
   const msg = `FINANCE_DB_PATH "${FINANCE_DB_PATH}" is outside the allowed data root (${DATA_ROOT}) — proceeding anyway`;
@@ -79,6 +94,7 @@ export interface ServerConfig {
   readonly timezone: string;
   readonly origin: string;
   readonly port: number;
+  readonly insightCashStaleDays: number;
   readonly vaultRoot: string;
   readonly dataRoot: string;
   readonly warnings: readonly string[];
@@ -90,6 +106,7 @@ export const config: ServerConfig = Object.freeze({
   timezone: APP_TIMEZONE,
   origin: APP_ORIGIN,
   port: PORT,
+  insightCashStaleDays: INSIGHT_CASH_STALE_DAYS,
   vaultRoot: VAULT_ROOT,
   dataRoot: DATA_ROOT,
   warnings: Object.freeze(warnings),

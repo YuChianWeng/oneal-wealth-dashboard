@@ -1,9 +1,15 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { assertServerOnly } from "@/lib/server-only";
 import { computeInvestmentReconciliation } from "@/lib/analytics/cash-reconciliation";
-import { loanInvestmentPerformance } from "@/lib/data/loan-investment-repository";
+import {
+  loanInvestmentPerformance,
+  type LoanInvestmentPerformance,
+} from "@/lib/data/loan-investment-repository";
 import { listAllTrades } from "@/lib/data/portfolio-repository";
+import type { TradeRecord } from "@/lib/schemas/portfolio";
 import { SourceError } from "@/lib/errors";
 import { err, ok, type Result } from "@/lib/result";
 import {
@@ -14,34 +20,44 @@ import {
 assertServerOnly();
 
 function publicTradeId(internalId: string): string {
-  const basename = internalId.split("/").pop() ?? internalId;
-  return basename.replace(/\.md$/i, "");
+  const digest = createHash("sha256").update(internalId, "utf8").digest("hex");
+  return `trade-${digest}`;
 }
 
 function nearlyEqual(left: number, right: number): boolean {
   return Math.abs(left - right) <= 0.01;
 }
 
-/**
- * Build the canonical investment reconciliation read model from auditable,
- * read-only sources. Raw vault paths and frontmatter never cross this boundary.
- */
-export function investmentReconciliation(): Result<
-  InvestmentReconciliation,
-  SourceError
-> {
-  const performanceResult = loanInvestmentPerformance();
-  if (!performanceResult.ok) return performanceResult;
+export interface InvestmentReconciliationInsightState {
+  reconciliation: InvestmentReconciliation;
+  strategyEquationDelta: number;
+}
 
-  const point = [...performanceResult.value.points]
+type LoanInvestmentPoint = LoanInvestmentPerformance["points"][number];
+type ReconciliationPoint = LoanInvestmentPoint & {
+  confirmedCash: number;
+  cashAsOfDate: string;
+  brokerageMarketValue: number;
+};
+
+function isReconciliationPoint(
+  point: LoanInvestmentPoint | undefined,
+): point is ReconciliationPoint {
+  return Boolean(
+    point &&
+      point.confirmedCash !== null &&
+      point.cashAsOfDate !== null &&
+      point.brokerageMarketValue !== null,
+  );
+}
+
+function reconciliationPoint(
+  performance: LoanInvestmentPerformance,
+): Result<ReconciliationPoint, SourceError> {
+  const point = [...performance.points]
     .reverse()
     .find((candidate) => !candidate.isSeed);
-  if (
-    !point ||
-    point.confirmedCash === null ||
-    point.cashAsOfDate === null ||
-    point.brokerageMarketValue === null
-  ) {
+  if (!isReconciliationPoint(point)) {
     return err(
       new SourceError(
         "Investment reconciliation source is unavailable",
@@ -49,9 +65,21 @@ export function investmentReconciliation(): Result<
       ),
     );
   }
+  return ok(point);
+}
 
-  const tradesResult = listAllTrades();
-  if (!tradesResult.ok) return tradesResult;
+/**
+ * Build the canonical reconciliation and its internal audit state from one
+ * read of each auditable source. Raw vault paths and frontmatter never cross
+ * this boundary.
+ */
+export function investmentReconciliationInsightStateFromSources(
+  performance: LoanInvestmentPerformance,
+  trades: TradeRecord[],
+): Result<InvestmentReconciliationInsightState, SourceError> {
+  const pointResult = reconciliationPoint(performance);
+  if (!pointResult.ok) return pointResult;
+  const point = pointResult.value;
 
   try {
     const computed = computeInvestmentReconciliation({
@@ -59,7 +87,7 @@ export function investmentReconciliation(): Result<
       confirmedCash: point.confirmedCash,
       cashAsOfDate: point.cashAsOfDate,
       holdingsMarketValue: point.brokerageMarketValue,
-      trades: tradesResult.value.map((trade) => ({
+      trades: trades.map((trade) => ({
         id: publicTradeId(trade.id),
         symbol: trade.symbol,
         side: trade.side,
@@ -79,19 +107,32 @@ export function investmentReconciliation(): Result<
         point.pendingTradeCashAdjustment,
         computed.pendingTradeCashAdjustment,
       ],
-      ["effective cash value", point.effectiveCashValue, computed.effectiveCashValue],
+      [
+        "effective cash value",
+        point.effectiveCashValue,
+        computed.effectiveCashValue,
+      ],
       ["strategy value", point.strategyValue, computed.strategyValue],
     ];
     for (const [label, snapshotValue, computedValue] of checks) {
-      if (snapshotValue === null || !nearlyEqual(snapshotValue, computedValue)) {
-        warnings.push(`Snapshot ${label} does not match transaction reconciliation`);
+      if (
+        snapshotValue === null ||
+        !nearlyEqual(snapshotValue, computedValue)
+      ) {
+        warnings.push(
+          `Snapshot ${label} does not match transaction reconciliation`,
+        );
       }
     }
     if (point.pendingTradeCount !== pendingCount) {
-      warnings.push("Snapshot pending trade count does not match transaction reconciliation");
+      warnings.push(
+        "Snapshot pending trade count does not match transaction reconciliation",
+      );
     }
     if (point.cashAsOfQuality !== "confirmed-explicit-event") {
-      warnings.push("Cash freshness is inferred rather than explicitly confirmed");
+      warnings.push(
+        "Cash freshness is inferred rather than explicitly confirmed",
+      );
     }
     warnings.sort((left, right) => left.localeCompare(right));
 
@@ -111,7 +152,10 @@ export function investmentReconciliation(): Result<
         ),
       );
     }
-    return ok(parsed.data);
+    return ok({
+      reconciliation: parsed.data,
+      strategyEquationDelta: point.strategyValue - parsed.data.strategyValue,
+    });
   } catch (cause) {
     return err(
       new SourceError(
@@ -121,4 +165,38 @@ export function investmentReconciliation(): Result<
       ),
     );
   }
+}
+
+function loadInvestmentReconciliationInsightState(): Result<
+  InvestmentReconciliationInsightState,
+  SourceError
+> {
+  const performanceResult = loanInvestmentPerformance();
+  if (!performanceResult.ok) return performanceResult;
+  const pointResult = reconciliationPoint(performanceResult.value);
+  if (!pointResult.ok) return pointResult;
+  const tradesResult = listAllTrades();
+  if (!tradesResult.ok) return tradesResult;
+  return investmentReconciliationInsightStateFromSources(
+    performanceResult.value,
+    tradesResult.value,
+  );
+}
+
+/** Return the existing public reconciliation model without internal audit state. */
+export function investmentReconciliation(): Result<
+  InvestmentReconciliation,
+  SourceError
+> {
+  const result = loadInvestmentReconciliationInsightState();
+  if (!result.ok) return result;
+  return ok(result.value.reconciliation);
+}
+
+/** Return typed reconciliation audit state for the Insights layer. */
+export function investmentReconciliationInsightState(): Result<
+  InvestmentReconciliationInsightState,
+  SourceError
+> {
+  return loadInvestmentReconciliationInsightState();
 }

@@ -9,6 +9,7 @@ import {
 } from "@/lib/data/portfolio-repository";
 import { listResearchSummariesForSymbols } from "@/lib/data/research-repository";
 import { buildPortfolioResearchView } from "@/lib/data/portfolio-research-view";
+import { loadPhaseOneInsightContext } from "@/lib/data/insight-context-repository";
 import { loadStockTaxonomyLabels } from "@/lib/data/stock-taxonomy-repository";
 import { monthlySummary } from "@/lib/data/finance-repository";
 import { computeAllocationBreakdown } from "@/lib/analytics/allocation";
@@ -40,6 +41,7 @@ const QuerySchema = z.object({
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
+    const now = new Date();
     const { searchParams } = request.nextUrl;
 
     const parsed = QuerySchema.safeParse({
@@ -62,6 +64,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         },
       );
     }
+
+    const phaseOneContext = loadPhaseOneInsightContext(now);
 
     // ------------------------------------------------------------------
     // Gather data from repositories (best-effort — partial data is OK)
@@ -98,7 +102,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
 
     // Monthly summary (current month)
-    const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const summaryResult = monthlySummary(currentMonth);
     const currentMonthSummary: MonthlySummary | null = summaryResult.ok
@@ -122,7 +125,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // Performance chart from snapshots
     const range = parsed.data.range;
-    const since = rangeToSince(range);
+    const since = rangeToSince(range, now);
     const snapshotsResult = getDailySnapshots(since);
     const snapshots = snapshotsResult.ok ? snapshotsResult.value : [];
     const performanceChart = computePerformanceChart(snapshots);
@@ -136,6 +139,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // Insights use the same research-enriched view as /api/insights.
     const insights = generateInsights({
+      ...phaseOneContext,
       positions: researchView.positions,
       researchSummaries: researchView.researchSummaries,
       invalidResearchSymbols: researchView.invalidResearchSymbols,
@@ -177,8 +181,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 // Helper: map range → ISO date lower bound
 // ---------------------------------------------------------------------------
 
-function rangeToSince(range: z.infer<typeof RangeSchema>): string {
-  const now = new Date();
+function rangeToSince(range: z.infer<typeof RangeSchema>, now: Date): string {
   switch (range) {
     case "1M": {
       const d = new Date(now);

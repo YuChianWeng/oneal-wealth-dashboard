@@ -33,13 +33,15 @@ import {
 // ---------------------------------------------------------------------------
 
 /** Current insight version — bump when rule logic changes materially. */
-export const INSIGHT_VERSION = "1.2";
+export const INSIGHT_VERSION = "1.3";
 
 /** Stale research threshold: research older than this many days triggers a warning. */
 const STALE_RESEARCH_DAYS = 30;
 
 /** High concentration threshold (% of portfolio in a single stock). */
 const HIGH_CONCENTRATION_PCT = 30;
+
+const DEFAULT_CASH_STALE_DAYS = 7;
 
 // ---------------------------------------------------------------------------
 // Insight generation context
@@ -55,8 +57,48 @@ export interface InsightContext {
   researchSummaries?: ResearchSummary[];
   /** Symbols with a matching research note that failed parsing/validation. */
   invalidResearchSymbols?: string[];
+  /** Auditable reconciliation output. Undefined means the source was not evaluated. */
+  reconciliation?: ReconciliationInsightInput;
+  /** Typed trade-integrity diagnostics; never raw source errors or paths. */
+  tradeIntegrity?: TradeIntegrityInsightInput;
+  /** Financing economics integrity state. */
+  financing?: FinancingInsightInput;
+  /** 0050 source/freshness state. */
+  benchmark0050?: Benchmark0050InsightInput;
+  /** Calendar-day threshold; defaults to stale when age is greater than 7. */
+  cashStaleAfterDays?: number;
   /** ISO-8601 timestamp for "now" (allows deterministic testing). */
   now?: string;
+}
+
+export interface ReconciliationInsightInput {
+  cashAsOfDate: string;
+  pendingSettlements: readonly {
+    id: string;
+    symbol: string;
+    status: "pending" | "overdue" | "covered-by-cash-snapshot";
+  }[];
+  /** Snapshot strategy value minus the independently reconciled value. */
+  strategyEquationDelta?: number | null;
+}
+
+export interface TradeIntegrityInsightInput {
+  missingNetCashflow: readonly {
+    id: string;
+    symbol: string;
+  }[];
+}
+
+export interface FinancingInsightInput {
+  status: "confirmed" | "partial" | "needs-review";
+  statusReason: string | null;
+}
+
+export interface Benchmark0050InsightInput {
+  sourceStatus: "available" | "missing" | "invalid";
+  freshness: "fresh" | "stale" | "unavailable";
+  latestDate: string | null;
+  expectedLatestDate: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +128,22 @@ function todayISO(now?: string): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function calendarDaysBetween(later: string, earlier: string): number | null {
+  const laterMs = Date.parse(`${later}T00:00:00Z`);
+  const earlierMs = Date.parse(`${earlier}T00:00:00Z`);
+  if (!Number.isFinite(laterMs) || !Number.isFinite(earlierMs)) return null;
+  return Math.floor((laterMs - earlierMs) / (1000 * 60 * 60 * 24));
+}
+
+function sortedUnique(values: readonly string[]): string[] {
+  return [...new Set(values.filter((value) => value.length > 0))].sort();
+}
+
+function safePublicBusinessLabel(value: string): string {
+  const trimmed = value.trim();
+  return /^[A-Za-z0-9.^_-]{1,32}$/.test(trimmed) ? trimmed : "unknown";
+}
+
 // ---------------------------------------------------------------------------
 // Insight factory
 // ---------------------------------------------------------------------------
@@ -109,6 +167,154 @@ function makeInsight(tmpl: InsightTemplate, now?: string): Insight {
     drillThroughUrl: tmpl.drillThroughUrl,
     generatedAt: todayISO(now),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 trust rules: reconciliation and freshness
+// ---------------------------------------------------------------------------
+
+function checkCashFreshness(
+  reconciliation: ReconciliationInsightInput | undefined,
+  nowDate: string,
+  configuredThreshold: number | undefined,
+): Insight[] {
+  if (!reconciliation) return [];
+  const ageDays = calendarDaysBetween(nowDate, reconciliation.cashAsOfDate);
+  if (ageDays === null || ageDays < 0) return [];
+
+  const staleAfterDays =
+    Number.isInteger(configuredThreshold) && configuredThreshold! >= 0
+      ? configuredThreshold!
+      : DEFAULT_CASH_STALE_DAYS;
+  if (ageDays <= staleAfterDays) return [];
+
+  return [
+    makeInsight({
+      rule: "cash-freshness",
+      severity: "action-needed",
+      title: `Investment cash balance is ${ageDays} days old`,
+      description: `Confirmed investment cash was last observed on ${reconciliation.cashAsOfDate}. Review the cash source before relying on reconciled strategy value.`,
+      drillThroughUrl: "/portfolio/reconciliation",
+    }),
+  ];
+}
+
+function checkOverdueSettlements(
+  reconciliation: ReconciliationInsightInput | undefined,
+): Insight[] {
+  if (!reconciliation) return [];
+  const overdue = [...reconciliation.pendingSettlements]
+    .filter((settlement) => settlement.status === "overdue")
+    .sort((left, right) => left.id.localeCompare(right.id));
+  if (overdue.length === 0) return [];
+  const symbols = sortedUnique(
+    overdue.map((settlement) => safePublicBusinessLabel(settlement.symbol)),
+  );
+  return [
+    makeInsight({
+      rule: "overdue-settlement",
+      severity: "action-needed",
+      title: `${overdue.length} trade settlement(s) are overdue`,
+      description: `${symbols.join(", ")} remain uncovered after their settlement boundary. Verify the trade and cash snapshot.`,
+      drillThroughUrl: "/portfolio/reconciliation",
+    }),
+  ];
+}
+
+function checkMissingNetCashflow(
+  tradeIntegrity: TradeIntegrityInsightInput | undefined,
+): Insight[] {
+  if (!tradeIntegrity) return [];
+  const missing = [...tradeIntegrity.missingNetCashflow].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+  if (missing.length === 0) return [];
+  const ids = sortedUnique(missing.map((trade) => trade.id));
+  const symbols = sortedUnique(
+    missing.map((trade) => safePublicBusinessLabel(trade.symbol)),
+  );
+  return [
+    makeInsight({
+      rule: "missing-net-cashflow",
+      severity: "action-needed",
+      title: `${ids.length} trade(s) have invalid net cashflow`,
+      description: `${symbols.join(", ")} cannot be reconciled because net cashflow is missing, zero, or invalid. Repair the transaction record before relying on strategy value.`,
+      drillThroughUrl: "/portfolio/reconciliation",
+    }),
+  ];
+}
+
+function checkStrategyEquationMismatch(
+  reconciliation: ReconciliationInsightInput | undefined,
+): Insight[] {
+  const delta = reconciliation?.strategyEquationDelta;
+  if (
+    typeof delta !== "number" ||
+    !Number.isFinite(delta) ||
+    Math.abs(delta) <= 1
+  ) {
+    return [];
+  }
+  return [
+    makeInsight({
+      rule: "strategy-equation-mismatch",
+      severity: "action-needed",
+      title: "Investment strategy equation does not reconcile",
+      description: `The stored snapshot differs from confirmed cash plus pending settlements plus holdings by ${Math.abs(delta).toFixed(2)} TWD, beyond the accepted one-TWD rounding tolerance. Review the reconciliation inputs.`,
+      drillThroughUrl: "/portfolio/reconciliation",
+    }),
+  ];
+}
+
+function checkFinancingIntegrity(
+  financing: FinancingInsightInput | undefined,
+): Insight[] {
+  if (!financing || financing.status === "confirmed") return [];
+  const reason =
+    financing.statusReason?.trim() || "Financing inputs are incomplete";
+  return [
+    makeInsight({
+      rule: "financing-integrity",
+      severity: "action-needed",
+      title: "Loan financing cost needs review",
+      description: `${reason}. Net strategy value and net return must not be relied on until financing data is confirmed.`,
+      drillThroughUrl: "/growth",
+    }),
+  ];
+}
+
+function checkBenchmark0050Freshness(
+  benchmark: Benchmark0050InsightInput | undefined,
+): Insight[] {
+  if (
+    !benchmark ||
+    (benchmark.sourceStatus === "available" && benchmark.freshness === "fresh")
+  ) {
+    return [];
+  }
+  const sourceFailure = benchmark.sourceStatus !== "available";
+  let detail: string;
+  if (benchmark.sourceStatus === "missing") {
+    detail = "The 0050 benchmark artifact is missing";
+  } else if (benchmark.sourceStatus === "invalid") {
+    detail = "The 0050 benchmark artifact is invalid";
+  } else if (benchmark.freshness === "stale") {
+    detail = `The latest 0050 observation (${benchmark.latestDate ?? "unknown"}) is older than the expected completed TWSE session (${benchmark.expectedLatestDate ?? "unknown"})`;
+  } else {
+    detail =
+      "0050 freshness cannot be verified outside checked exchange-calendar coverage";
+  }
+  return [
+    makeInsight({
+      rule: "benchmark-0050-freshness",
+      severity: sourceFailure ? "action-needed" : "notice",
+      title: sourceFailure
+        ? "0050 benchmark data is unavailable"
+        : "0050 benchmark freshness needs review",
+      description: `${detail}. Portfolio benchmark comparisons may be incomplete.`,
+      drillThroughUrl: "/portfolio/performance",
+    }),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +648,12 @@ export function generateInsights(ctx: InsightContext): Insight[] {
   const invalidResearchSymbols = ctx.invalidResearchSymbols;
 
   const allInsights: Insight[] = [
+    ...checkCashFreshness(ctx.reconciliation, nowDate, ctx.cashStaleAfterDays),
+    ...checkOverdueSettlements(ctx.reconciliation),
+    ...checkMissingNetCashflow(ctx.tradeIntegrity),
+    ...checkStrategyEquationMismatch(ctx.reconciliation),
+    ...checkFinancingIntegrity(ctx.financing),
+    ...checkBenchmark0050Freshness(ctx.benchmark0050),
     ...checkStalePrices(positions, now),
     ...checkMissingRationale(positions, invalidResearchSymbols),
     ...checkHighConcentration(positions),

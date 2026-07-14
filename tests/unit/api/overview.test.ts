@@ -7,12 +7,14 @@ const {
   mockGetDailySnapshots,
   mockListOpenPositions,
   mockListResearchSummariesForSymbols,
+  mockLoadPhaseOneInsightContext,
   mockLoadStockTaxonomyLabels,
   mockMonthlySummary,
 } = vi.hoisted(() => ({
   mockGetDailySnapshots: vi.fn(),
   mockListOpenPositions: vi.fn(),
   mockListResearchSummariesForSymbols: vi.fn(),
+  mockLoadPhaseOneInsightContext: vi.fn(),
   mockLoadStockTaxonomyLabels: vi.fn(),
   mockMonthlySummary: vi.fn(),
 }));
@@ -30,6 +32,10 @@ vi.mock("@/lib/data/research-repository", () => ({
   listResearchSummariesForSymbols: mockListResearchSummariesForSymbols,
 }));
 
+vi.mock("@/lib/data/insight-context-repository", () => ({
+  loadPhaseOneInsightContext: mockLoadPhaseOneInsightContext,
+}));
+
 vi.mock("@/lib/data/stock-taxonomy-repository", () => ({
   loadStockTaxonomyLabels: mockLoadStockTaxonomyLabels,
 }));
@@ -40,6 +46,7 @@ vi.mock("@/lib/data/finance-repository", () => ({
 
 import { GET } from "@/app/api/overview/route";
 import { err, ok } from "@/lib/result";
+import type { PhaseOneInsightContext } from "@/lib/data/insight-context-repository";
 
 const position = {
   symbol: "2330.TW",
@@ -96,6 +103,26 @@ describe("GET /api/overview research enrichment", () => {
     mockListResearchSummariesForSymbols.mockReturnValue(
       ok({ summaries: new Map([["2330.TW", research]]), invalid: [] }),
     );
+    mockLoadPhaseOneInsightContext.mockReturnValue({ cashStaleAfterDays: 7 });
+  });
+
+  it("rejects an invalid range before loading any data sources", async () => {
+    const response = await GET(
+      new NextRequest("http://localhost:3000/api/overview?range=invalid"),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    const body = await response.json();
+    expect(body).toMatchObject({
+      version: 1,
+      error: { code: "VALIDATION_ERROR" },
+    });
+    expect(mockLoadPhaseOneInsightContext).not.toHaveBeenCalled();
+    expect(mockListOpenPositions).not.toHaveBeenCalled();
+    expect(mockListResearchSummariesForSymbols).not.toHaveBeenCalled();
+    expect(mockGetDailySnapshots).not.toHaveBeenCalled();
+    expect(mockMonthlySummary).not.toHaveBeenCalled();
   });
 
   it("uses the same research-enriched insight view as /api/insights", async () => {
@@ -108,6 +135,10 @@ describe("GET /api/overview research enrichment", () => {
 
     const body = await response.json();
     expect(body.version).toBe(1);
+    expect(mockLoadPhaseOneInsightContext).toHaveBeenCalledOnce();
+    expect(mockLoadPhaseOneInsightContext).toHaveBeenCalledWith(
+      expect.any(Date),
+    );
     expect(body.data.allocation.bySector[0]).toMatchObject({
       id: "information-technology",
       label: "資訊科技",
@@ -125,6 +156,43 @@ describe("GET /api/overview research enrichment", () => {
     );
     expect(ids.some((id: string) => id.includes("missing-sector"))).toBe(false);
     expect(ids.some((id: string) => id.includes("missing-theme"))).toBe(false);
+  });
+
+  it("makes Phase 1 benchmark diagnostics production-reachable", async () => {
+    const phaseContext: PhaseOneInsightContext & {
+      sourcePath: string;
+      error: string;
+    } = {
+      benchmark0050: {
+        sourceStatus: "missing",
+        freshness: "unavailable",
+        latestDate: null,
+        expectedLatestDate: null,
+      },
+      cashStaleAfterDays: 7,
+      sourcePath: "/home/ubuntu/private/benchmark.json",
+      error: "secret benchmark source failure",
+    };
+    mockLoadPhaseOneInsightContext.mockReturnValue(phaseContext);
+
+    const response = await GET(request());
+    const body = await response.json();
+    const insight = body.data.insights.find(
+      (item: { id: string }) =>
+        item.id === "insight-1.3-benchmark-0050-freshness",
+    );
+
+    expect(response.status).toBe(200);
+    expect(insight).toMatchObject({
+      id: "insight-1.3-benchmark-0050-freshness",
+      insightVersion: "1.3",
+      severity: "action-needed",
+    });
+    expect(mockLoadPhaseOneInsightContext).toHaveBeenCalledOnce();
+    expect(JSON.stringify(body)).not.toContain("/home/");
+    expect(JSON.stringify(body)).not.toContain(
+      "secret benchmark source failure",
+    );
   });
 
   it("fails closed when the research scan is unavailable", async () => {

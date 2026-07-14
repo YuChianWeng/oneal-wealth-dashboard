@@ -547,6 +547,295 @@ describe("empty portfolio", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Phase 1 trust rules: reconciliation and freshness
+// ---------------------------------------------------------------------------
+
+describe("cash freshness", () => {
+  const reconciliation = {
+    cashAsOfDate: "2026-06-25",
+    pendingSettlements: [],
+  };
+
+  it.each([
+    ["2026-07-02T12:00:00Z", undefined],
+    ["2026-07-03T12:00:00Z", "action-needed"],
+  ] as const)(
+    "fires only beyond the default 7-day boundary at %s",
+    (now, severity) => {
+      const insight = generateInsights({ reconciliation, now }).find((item) =>
+        item.id.includes("cash-freshness"),
+      );
+      expect(insight?.severity).toBe(severity);
+    },
+  );
+
+  it("supports one configurable threshold without changing the stable ID", () => {
+    const insight = generateInsights({
+      reconciliation,
+      cashStaleAfterDays: 2,
+      now: "2026-06-28T12:00:00Z",
+    }).find((item) => item.id.includes("cash-freshness"));
+
+    expect(insight?.id).toBe(`insight-${INSIGHT_VERSION}-cash-freshness`);
+    expect(insight?.severity).toBe("action-needed");
+  });
+
+  it("does not infer a problem when reconciliation was not evaluated", () => {
+    expect(
+      generateInsights({ now: NOW }).find((item) =>
+        item.id.includes("cash-freshness"),
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe("overdue settlements", () => {
+  it("flags only overdue rows and sorts IDs for deterministic output", () => {
+    const rows = [
+      { id: "trade-z", symbol: "2454.TW", status: "overdue" as const },
+      { id: "trade-p", symbol: "0050.TW", status: "pending" as const },
+      { id: "trade-a", symbol: "2330.TW", status: "overdue" as const },
+    ];
+    const first = generateInsights({
+      reconciliation: {
+        cashAsOfDate: "2026-07-10",
+        pendingSettlements: rows,
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("overdue-settlement"));
+    const second = generateInsights({
+      reconciliation: {
+        cashAsOfDate: "2026-07-10",
+        pendingSettlements: [...rows].reverse(),
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("overdue-settlement"));
+
+    expect(first?.id).toBe(second?.id);
+    expect(first?.id).toBe(`insight-${INSIGHT_VERSION}-overdue-settlement`);
+    expect(first?.id).not.toContain("trade-a");
+    expect(first?.severity).toBe("action-needed");
+    expect(first?.description).not.toContain("0050.TW");
+
+    const differentSet = generateInsights({
+      reconciliation: {
+        cashAsOfDate: "2026-07-10",
+        pendingSettlements: [
+          {
+            id: "trade-a-trade-z",
+            symbol: "2330.TW",
+            status: "overdue",
+          },
+        ],
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("overdue-settlement"));
+    expect(differentSet?.id).toBe(first?.id);
+  });
+});
+
+describe("missing trade net cashflow", () => {
+  it("uses typed diagnostics and sorts safe trade IDs deterministically", () => {
+    const first = generateInsights({
+      tradeIntegrity: {
+        missingNetCashflow: [
+          { id: "trade-b", symbol: "2454.TW" },
+          { id: "trade-a", symbol: "2330.TW" },
+        ],
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("missing-net-cashflow"));
+    const second = generateInsights({
+      tradeIntegrity: {
+        missingNetCashflow: [
+          { id: "trade-a", symbol: "2330.TW" },
+          { id: "trade-b", symbol: "2454.TW" },
+        ],
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("missing-net-cashflow"));
+
+    expect(first?.id).toBe(second?.id);
+    expect(first?.id).toBe(`insight-${INSIGHT_VERSION}-missing-net-cashflow`);
+    expect(first?.id).not.toContain("trade-a");
+    expect(first?.severity).toBe("action-needed");
+    expect(first?.description).not.toContain("/home/");
+
+    const unsafe = generateInsights({
+      tradeIntegrity: {
+        missingNetCashflow: [
+          {
+            id: "/home/ubuntu/ObsidianVault/private.md",
+            symbol: "/home/ubuntu/private",
+          },
+        ],
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("missing-net-cashflow"));
+    expect(unsafe?.id).not.toContain("/home/");
+    expect(unsafe?.description).not.toContain("/home/");
+
+    const differentSet = generateInsights({
+      tradeIntegrity: {
+        missingNetCashflow: [{ id: "trade-a-trade-b", symbol: "2330.TW" }],
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("missing-net-cashflow"));
+    expect(differentSet?.id).toBe(first?.id);
+  });
+
+  it("keeps aggregate IDs bounded for large diagnostic sets", () => {
+    const insight = generateInsights({
+      tradeIntegrity: {
+        missingNetCashflow: Array.from({ length: 1_000 }, (_, index) => ({
+          id: `order:broker:${index}`,
+          symbol: "2330.TW",
+        })),
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("missing-net-cashflow"));
+
+    expect(insight?.id).toBe(`insight-${INSIGHT_VERSION}-missing-net-cashflow`);
+    expect(insight?.id.length).toBeLessThan(100);
+    expect(insight?.id).not.toContain("broker");
+  });
+
+  it("does not parse human-readable reconciliation warnings", () => {
+    const insight = generateInsights({
+      reconciliation: {
+        cashAsOfDate: "2026-07-10",
+        pendingSettlements: [],
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("missing-net-cashflow"));
+    expect(insight).toBeUndefined();
+  });
+});
+
+describe("strategy equation integrity", () => {
+  it.each([
+    [-1, false],
+    [1, false],
+    [-1.01, true],
+    [1.01, true],
+  ] as const)(
+    "applies the one-TWD tolerance to delta %s",
+    (delta, expected) => {
+      const insight = generateInsights({
+        reconciliation: {
+          cashAsOfDate: "2026-07-10",
+          pendingSettlements: [],
+          strategyEquationDelta: delta,
+        },
+        now: NOW,
+      }).find((item) => item.id.includes("strategy-equation-mismatch"));
+
+      expect(Boolean(insight)).toBe(expected);
+      if (insight) {
+        expect(insight.id).toBe(
+          `insight-${INSIGHT_VERSION}-strategy-equation-mismatch`,
+        );
+        expect(insight.severity).toBe("action-needed");
+      }
+    },
+  );
+
+  it("does not infer a mismatch when the typed delta was not evaluated", () => {
+    const insight = generateInsights({
+      reconciliation: {
+        cashAsOfDate: "2026-07-10",
+        pendingSettlements: [],
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("strategy-equation-mismatch"));
+    expect(insight).toBeUndefined();
+  });
+});
+
+describe("financing integrity", () => {
+  it.each(["needs-review", "partial"] as const)(
+    "flags %s financing economics",
+    (status) => {
+      const insight = generateInsights({
+        financing: { status, statusReason: "Baseline is incomplete" },
+        now: NOW,
+      }).find((item) => item.id.includes("financing-integrity"));
+      expect(insight?.severity).toBe("action-needed");
+      expect(insight?.description).toContain("Baseline is incomplete");
+    },
+  );
+
+  it("does not flag confirmed financing economics", () => {
+    expect(
+      generateInsights({
+        financing: { status: "confirmed", statusReason: null },
+        now: NOW,
+      }).find((item) => item.id.includes("financing-integrity")),
+    ).toBeUndefined();
+  });
+});
+
+describe("0050 benchmark freshness", () => {
+  it("uses notice for stale data and unavailable calendar coverage", () => {
+    for (const benchmark0050 of [
+      {
+        sourceStatus: "available" as const,
+        freshness: "stale" as const,
+        latestDate: "2026-07-09",
+        expectedLatestDate: "2026-07-10",
+      },
+      {
+        sourceStatus: "available" as const,
+        freshness: "unavailable" as const,
+        latestDate: "2026-07-10",
+        expectedLatestDate: null,
+      },
+    ]) {
+      const insight = generateInsights({ benchmark0050, now: NOW }).find(
+        (item) => item.id.includes("benchmark-0050-freshness"),
+      );
+      expect(insight?.severity).toBe("notice");
+    }
+  });
+
+  it.each(["missing", "invalid"] as const)(
+    "uses action-needed when the source is %s",
+    (sourceStatus) => {
+      const insight = generateInsights({
+        benchmark0050: {
+          sourceStatus,
+          freshness: "unavailable",
+          latestDate: null,
+          expectedLatestDate: "2026-07-10",
+        },
+        now: NOW,
+      }).find((item) => item.id.includes("benchmark-0050-freshness"));
+      expect(insight?.severity).toBe("action-needed");
+    },
+  );
+
+  it("does not flag a fresh source or an unevaluated source", () => {
+    const fresh = generateInsights({
+      benchmark0050: {
+        sourceStatus: "available",
+        freshness: "fresh",
+        latestDate: "2026-07-10",
+        expectedLatestDate: "2026-07-10",
+      },
+      now: NOW,
+    });
+    expect(
+      fresh.find((item) => item.id.includes("benchmark-0050-freshness")),
+    ).toBeUndefined();
+    expect(
+      generateInsights({ now: NOW }).find((item) =>
+        item.id.includes("benchmark-0050-freshness"),
+      ),
+    ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Integration: multiple rules fire together
 // ---------------------------------------------------------------------------
 

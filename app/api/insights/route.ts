@@ -12,12 +12,15 @@ import { toSafeResponse } from "@/lib/errors";
 import { listOpenPositions } from "@/lib/data/portfolio-repository";
 import { listResearchSummariesForSymbols } from "@/lib/data/research-repository";
 import { buildPortfolioResearchView } from "@/lib/data/portfolio-research-view";
+import { loadPhaseOneInsightContext } from "@/lib/data/insight-context-repository";
 import { generateInsights } from "@/lib/analytics/insights";
 
 const CACHE_HEADERS = { "Cache-Control": "private, no-store" } as const;
 
 export async function GET() {
   try {
+    const now = new Date();
+    const phaseOneContext = loadPhaseOneInsightContext(now);
     const positionsResult = listOpenPositions();
     if (!positionsResult.ok) throw positionsResult.error;
 
@@ -30,9 +33,11 @@ export async function GET() {
       researchResult.value,
     );
     const insights = generateInsights({
+      ...phaseOneContext,
       positions: view.positions,
       researchSummaries: view.researchSummaries,
       invalidResearchSymbols: view.invalidResearchSymbols,
+      now: now.toISOString(),
     });
 
     return NextResponse.json(

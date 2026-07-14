@@ -4,17 +4,19 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockListOpenPositions, mockListResearchSummariesForSymbols } =
-  vi.hoisted(() => ({
-    mockListOpenPositions: vi.fn(),
-    mockListResearchSummariesForSymbols: vi.fn(),
-  }));
-
+const {
+  mockListOpenPositions,
+  mockListResearchSummariesForSymbols,
+  mockLoadPhaseOneInsightContext,
+} = vi.hoisted(() => ({
+  mockListOpenPositions: vi.fn(),
+  mockListResearchSummariesForSymbols: vi.fn(),
+  mockLoadPhaseOneInsightContext: vi.fn(),
+}));
 
 vi.mock("@/lib/server-only", () => ({
   assertServerOnly: vi.fn(),
 }));
-
 
 vi.mock("@/lib/data/portfolio-repository", () => ({
   listOpenPositions: mockListOpenPositions,
@@ -25,8 +27,13 @@ vi.mock("@/lib/data/research-repository", () => ({
   listResearchSummariesForSymbols: mockListResearchSummariesForSymbols,
 }));
 
+vi.mock("@/lib/data/insight-context-repository", () => ({
+  loadPhaseOneInsightContext: mockLoadPhaseOneInsightContext,
+}));
+
 import { GET } from "@/app/api/insights/route";
 import { ok } from "@/lib/result";
+import type { PhaseOneInsightContext } from "@/lib/data/insight-context-repository";
 
 describe("GET /api/insights", () => {
   beforeEach(() => {
@@ -34,6 +41,7 @@ describe("GET /api/insights", () => {
     mockListResearchSummariesForSymbols.mockReturnValue(
       ok({ summaries: new Map(), invalid: [] }),
     );
+    mockLoadPhaseOneInsightContext.mockReturnValue({ cashStaleAfterDays: 7 });
   });
   it("returns 200 with insights array", async () => {
     mockListOpenPositions.mockReturnValue(
@@ -61,6 +69,10 @@ describe("GET /api/insights", () => {
     const body = await response.json();
     expect(body.version).toBe(1);
     expect(Array.isArray(body.data)).toBe(true);
+    expect(mockLoadPhaseOneInsightContext).toHaveBeenCalledOnce();
+    expect(mockLoadPhaseOneInsightContext).toHaveBeenCalledWith(
+      expect.any(Date),
+    );
     // Each insight should have required fields
     for (const insight of body.data) {
       expect(insight.id).toBeTruthy();
@@ -70,6 +82,39 @@ describe("GET /api/insights", () => {
       expect(insight.drillThroughUrl).toBeTruthy();
       expect(insight.generatedAt).toBeTruthy();
     }
+  });
+
+  it("makes Phase 1 cash freshness insights production-reachable", async () => {
+    mockListOpenPositions.mockReturnValue(ok([]));
+    const phaseContext: PhaseOneInsightContext & {
+      sourcePath: string;
+      error: string;
+    } = {
+      reconciliation: {
+        cashAsOfDate: "2000-01-01",
+        pendingSettlements: [],
+      },
+      cashStaleAfterDays: 7,
+      sourcePath: "/home/ubuntu/private/reconciliation.json",
+      error: "secret phase context failure",
+    };
+    mockLoadPhaseOneInsightContext.mockReturnValue(phaseContext);
+
+    const response = await GET();
+    const body = await response.json();
+    const insight = body.data.find(
+      (item: { id: string }) => item.id === "insight-1.3-cash-freshness",
+    );
+
+    expect(response.status).toBe(200);
+    expect(insight).toMatchObject({
+      id: "insight-1.3-cash-freshness",
+      insightVersion: "1.3",
+      severity: "action-needed",
+    });
+    expect(mockLoadPhaseOneInsightContext).toHaveBeenCalledOnce();
+    expect(JSON.stringify(body)).not.toContain("/home/");
+    expect(JSON.stringify(body)).not.toContain("secret phase context failure");
   });
 
   it("joins research metadata and does not report an existing note as missing", async () => {
@@ -144,8 +189,8 @@ describe("GET /api/insights", () => {
 
     const body = await response.json();
     // There should be an "empty portfolio" insight
-    const emptyInsight = body.data.find(
-      (i: { id: string }) => i.id.includes("empty-portfolio"),
+    const emptyInsight = body.data.find((i: { id: string }) =>
+      i.id.includes("empty-portfolio"),
     );
     expect(emptyInsight).toBeTruthy();
   });
