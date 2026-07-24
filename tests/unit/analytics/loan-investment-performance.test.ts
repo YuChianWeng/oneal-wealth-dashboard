@@ -69,6 +69,26 @@ describe("computeLoanInvestmentEconomics", () => {
     expect(result.statusReason).toMatch(/below the confirmed baseline/);
   });
 
+  it("uses an explicit current-interest estimate when the audited baseline is missing", () => {
+    const result = computeLoanInvestmentEconomics({
+      ...baseInput(),
+      grossStrategyValue: 184_891,
+      costAsOfDate: "2026-07-18",
+      interestBaselineDate: null,
+      interestBaselineAmount: null,
+      linkedInterestPayments: null,
+      financingCostEstimate: 710,
+    });
+
+    expect(result.financingCost).toBe(710);
+    expect(result.netStrategyValue).toBe(184_181);
+    expect(result.netReturnPct).toBe(-7.9095);
+    expect(result.status).toBe("partial");
+    expect(result.statusReason).toMatch(
+      /current policy-loan interest estimate/,
+    );
+  });
+
   it("hides net values when the baseline is missing", () => {
     const result = computeLoanInvestmentEconomics({
       ...baseInput(),

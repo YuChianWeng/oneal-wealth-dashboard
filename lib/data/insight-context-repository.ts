@@ -19,6 +19,31 @@ export type PhaseOneInsightContext = Pick<
   | "cashStaleAfterDays"
 >;
 
+const PUBLIC_FINANCING_STATUS_REASONS = new Map([
+  [
+    "Interest baseline requires a confirmed date and amount",
+    "Confirm the loan-interest baseline date and amount",
+  ],
+  [
+    "Linked interest payments have not been reviewed",
+    "Review linked policy-loan interest payments",
+  ],
+  [
+    "Financing cost uses the current policy-loan interest estimate",
+    "Financing cost uses the current policy-loan interest estimate",
+  ],
+  [
+    "Current cumulative interest is below the confirmed baseline",
+    "Current cumulative interest is below the confirmed baseline",
+  ],
+]);
+
+function publicFinancingStatusReason(
+  reason: string | null | undefined,
+): string | null {
+  return PUBLIC_FINANCING_STATUS_REASONS.get(reason?.trim() ?? "") ?? null;
+}
+
 /**
  * Compose the typed, public-safe inputs used by Phase 1 insight rules.
  * Source Result failures are represented as omissions or safe source states;
@@ -62,7 +87,10 @@ export function loadPhaseOneInsightContext(now: Date): PhaseOneInsightContext {
 
   const economics = financingResult.ok ? financingResult.value.economics : null;
   const financing = economics
-    ? { status: economics.status, statusReason: null }
+    ? {
+        status: economics.status,
+        statusReason: publicFinancingStatusReason(economics.statusReason),
+      }
     : undefined;
 
   const benchmark0050 = benchmarkResult.ok

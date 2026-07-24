@@ -31,7 +31,7 @@ export const PendingSettlementSchema = z
     netCashflow: amount(),
     effectiveCashAdjustment: amount(),
     ageTradingDays: z.number().int().nonnegative().nullable(),
-    status: z.enum(["pending", "overdue", "covered-by-cash-snapshot"]),
+    status: z.enum(["pending", "overdue", "covered-by-cash-snapshot", "finance-settled"]),
   })
   .strict();
 

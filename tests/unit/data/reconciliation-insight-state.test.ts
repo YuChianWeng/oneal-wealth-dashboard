@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SourceError } from "@/lib/errors";
 import { err, ok } from "@/lib/result";
 
-const { mockPerformance, mockTrades } = vi.hoisted(() => ({
+const { mockPerformance, mockTrades, mockFinanceSettlements } = vi.hoisted(() => ({
   mockPerformance: vi.fn(),
   mockTrades: vi.fn(),
+  mockFinanceSettlements: vi.fn(),
 }));
 
 vi.mock("@/lib/data/loan-investment-repository", () => ({
@@ -12,6 +13,9 @@ vi.mock("@/lib/data/loan-investment-repository", () => ({
 }));
 vi.mock("@/lib/data/portfolio-repository", () => ({
   listAllTrades: mockTrades,
+}));
+vi.mock("@/lib/data/finance-repository", () => ({
+  financeSettlements: mockFinanceSettlements,
 }));
 vi.mock("@/lib/server-only", () => ({ assertServerOnly: vi.fn() }));
 
@@ -37,12 +41,14 @@ const point = (strategyValue: number) => ({
 function useSources(strategyValue: number) {
   mockPerformance.mockReturnValue(ok({ points: [point(strategyValue)] }));
   mockTrades.mockReturnValue(ok([]));
+  mockFinanceSettlements.mockReturnValue(ok([]));
 }
 
 describe("investmentReconciliationInsightState", () => {
   beforeEach(() => {
     mockPerformance.mockReset();
     mockTrades.mockReset();
+    mockFinanceSettlements.mockReset();
   });
 
   it("returns the exact numeric snapshot-vs-reconciled strategy delta", () => {
@@ -66,6 +72,36 @@ describe("investmentReconciliationInsightState", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.strategyEquationDelta).toBe(0);
+  });
+
+  it("does not count finance-settled trades as pending", () => {
+    mockPerformance.mockReturnValue(ok({ points: [point(30)] }));
+    mockTrades.mockReturnValue(
+      ok([
+        {
+          id: "order:cathay:k07Dd",
+          symbol: "3675.TW",
+          side: "sell",
+          date: "2026-07-13",
+          settlementDate: "2026-07-15",
+          netCashflow: 8_743,
+        },
+      ]),
+    );
+    mockFinanceSettlements.mockReturnValue(
+      ok([{ idempotency_key: "tplus2-order:cathay:k07Dd" }]),
+    );
+
+    const result = investmentReconciliationInsightState();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.reconciliation.pendingSettlements[0]?.status).toBe(
+      "finance-settled",
+    );
+    expect(result.value.reconciliation.warnings).not.toContain(
+      "Snapshot pending trade count does not match transaction reconciliation",
+    );
   });
 
   it("uses deterministic opaque public IDs for pending trades", () => {

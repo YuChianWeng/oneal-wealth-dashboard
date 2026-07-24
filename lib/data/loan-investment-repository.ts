@@ -204,6 +204,7 @@ export function loanInvestmentPerformance(): Result<
           policyResult.value.loanInvestmentInterestBaselineDate,
         interestBaselineAmount:
           policyResult.value.loanInvestmentInterestBaselineAmount,
+        financingCostEstimate: policyResult.value.financingCostEstimate,
         // The Finance row contract has no required policy/strategy linkage key.
         // Null means unaudited; it must never be interpreted as zero payments.
         linkedInterestPayments: null,

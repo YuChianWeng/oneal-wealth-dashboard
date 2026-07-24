@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SourceError } from "@/lib/errors";
 import { err, ok } from "@/lib/result";
 
-const { mockPerformance, mockTrades } = vi.hoisted(() => ({
+const { mockPerformance, mockTrades, mockFinanceSettlements } = vi.hoisted(() => ({
   mockPerformance: vi.fn(),
   mockTrades: vi.fn(),
+  mockFinanceSettlements: vi.fn(),
 }));
 
 vi.mock("@/lib/data/loan-investment-repository", () => ({
@@ -12,6 +13,9 @@ vi.mock("@/lib/data/loan-investment-repository", () => ({
 }));
 vi.mock("@/lib/data/portfolio-repository", () => ({
   listAllTrades: mockTrades,
+}));
+vi.mock("@/lib/data/finance-repository", () => ({
+  financeSettlements: mockFinanceSettlements,
 }));
 vi.mock("@/lib/server-only", () => ({ assertServerOnly: vi.fn() }));
 
@@ -53,12 +57,14 @@ function useSources(
 ) {
   mockPerformance.mockReturnValue(ok({ points: [point(pointOverrides)] }));
   mockTrades.mockReturnValue(ok(trades));
+  mockFinanceSettlements.mockReturnValue(ok([]));
 }
 
 describe("investmentReconciliation failure modes", () => {
   beforeEach(() => {
     mockPerformance.mockReset();
     mockTrades.mockReset();
+    mockFinanceSettlements.mockReset();
   });
 
   it("propagates safe upstream source errors", () => {

@@ -12,6 +12,8 @@ import { buildPortfolioResearchView } from "@/lib/data/portfolio-research-view";
 import { loadPhaseOneInsightContext } from "@/lib/data/insight-context-repository";
 import { loadStockTaxonomyLabels } from "@/lib/data/stock-taxonomy-repository";
 import { monthlySummary } from "@/lib/data/finance-repository";
+import { loadMarketSnapshot } from "@/lib/data/market-snapshot-repository";
+import { applyLiveMarketPrices } from "@/lib/data/live-market-pricing";
 import { computeAllocationBreakdown } from "@/lib/analytics/allocation";
 import {
   computeKpis,
@@ -73,7 +75,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const positionsResult = listOpenPositions();
     if (!positionsResult.ok) throw positionsResult.error;
-    const positions = positionsResult.value;
+    const staticPositions = positionsResult.value;
+    const marketResult = loadMarketSnapshot();
+    const positions = marketResult.ok
+      ? applyLiveMarketPrices(staticPositions, marketResult.value)
+      : staticPositions;
 
     const researchResult = listResearchSummariesForSymbols(
       positions.map((position) => position.symbol),

@@ -15,6 +15,7 @@ import json
 import math
 import os
 import re
+import sqlite3
 import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -28,6 +29,7 @@ PORTFOLIO = VAULT / 'Trading/Portfolio/Snapshots'
 TRANSACTIONS = VAULT / 'Trading/Portfolio/Transactions'
 OUTPUT = VAULT / 'Finance/Insurance/Loan Investment Snapshots'
 RAW_BALANCE_LOGS = Path('/home/ubuntu/.hermes/logs/finance/raw')
+FINANCE_DB = Path(os.environ.get('FINANCE_DB_PATH', '/home/ubuntu/data/finance/finance.db'))
 TZ = ZoneInfo('Asia/Taipei')
 _REPO_CALENDAR = Path(__file__).resolve().parents[1] / 'data/market/twse-calendar.json'
 _DEFAULT_CALENDAR = (
@@ -236,6 +238,57 @@ def latest_confirmed_account_balance(account_key: str, valuation_date: str) -> d
         'as_of_date': date,
         'source': public_source(fm.get('source'), 'balance-entry'),
         'quality': 'inferred-from-balance-entry',
+    }
+
+
+def confirmed_settlement_rows_after(cash_as_of: str, valuation_date: str) -> list[tuple[str, float]]:
+    """Read confirmed Cathay investment settlements after the cash snapshot.
+
+    Settlement rows are applied only after the baseline cash date. This makes
+    the operation idempotent: once a later balance snapshot includes a
+    settlement, that row is no longer added a second time.
+    """
+    if not FINANCE_DB.is_file():
+        return []
+    try:
+        with sqlite3.connect(FINANCE_DB) as connection:
+            rows = connection.execute(
+                """
+                SELECT date, signed_amount
+                FROM transactions
+                WHERE transaction_type = 'investment_settlement'
+                  AND account_key = 'CathayBank'
+                  AND status = 'confirmed'
+                  AND date > ?
+                  AND date <= ?
+                ORDER BY date, rowid
+                """,
+                (cash_as_of, valuation_date),
+            ).fetchall()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError('Finance settlement ledger is unavailable') from exc
+
+    result: list[tuple[str, float]] = []
+    for settlement_date, signed_amount in rows:
+        parsed_date = required_iso_date(settlement_date, 'settlement date', 'Finance settlement ledger')
+        parsed_amount = num(signed_amount, default=math.nan)
+        if not math.isfinite(parsed_amount):
+            raise ValueError('invalid signed amount in Finance settlement ledger')
+        result.append((parsed_date, parsed_amount))
+    return result
+
+
+def cash_state_after_confirmed_settlements(cash_state: dict, valuation_date: str) -> dict:
+    """Fold confirmed T+2 cash events into the latest balance baseline."""
+    rows = confirmed_settlement_rows_after(cash_state['as_of_date'], valuation_date)
+    if not rows:
+        return dict(cash_state)
+    return {
+        **cash_state,
+        'balance': float(cash_state['balance']) + sum(amount for _, amount in rows),
+        'as_of_date': rows[-1][0],
+        'source': 'finance-settlement-ledger',
+        'quality': 'confirmed-explicit-event',
     }
 
 
@@ -477,7 +530,10 @@ def daily(config: dict, date: str, dry_run: bool):
     benchmark = num(portfolio_fm.get('benchmark_close'))
     if brokerage <= 0 or benchmark <= 0:
         raise ValueError('same-day portfolio snapshot lacks market_value or benchmark_close')
-    cash_state = latest_confirmed_account_balance('CathayBank', date)
+    cash_state = cash_state_after_confirmed_settlements(
+        latest_confirmed_account_balance('CathayBank', date),
+        date,
+    )
     cash_date = cash_state['as_of_date']
     cash = cash_state['balance']
     pending_trade_cash, pending_trade_count = pending_trade_cash_adjustment(cash_date, date)

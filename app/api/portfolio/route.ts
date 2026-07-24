@@ -7,6 +7,8 @@ import { listResearchSummariesForSymbols } from "@/lib/data/research-repository"
 import { buildPortfolioResearchView } from "@/lib/data/portfolio-research-view";
 import { loadStockTaxonomyLabels } from "@/lib/data/stock-taxonomy-repository";
 import { computeAllocationBreakdown } from "@/lib/analytics/allocation";
+import { loadMarketSnapshot } from "@/lib/data/market-snapshot-repository";
+import { applyLiveMarketPrices } from "@/lib/data/live-market-pricing";
 import type { AllocationBucket } from "@/lib/analytics/types";
 import type { HoldingAllocation } from "@/lib/schemas/portfolio";
 
@@ -35,12 +37,18 @@ export async function GET(): Promise<NextResponse> {
       positions,
       researchResult.value,
     );
+    const marketResult = loadMarketSnapshot();
+    const pricedPositions = marketResult.ok
+      ? applyLiveMarketPrices(researchView.positions, marketResult.value)
+      : researchView.positions;
+    const pricedResearchView = { ...researchView, positions: pricedPositions };
+
     const taxonomyResult = loadStockTaxonomyLabels();
     const taxonomyLabels = taxonomyResult.ok
       ? taxonomyResult.value
       : new Map<string, string>();
     const breakdown = computeAllocationBreakdown(
-      researchView.positions,
+      pricedResearchView.positions,
       taxonomyLabels,
     );
     const allocation = {
@@ -55,7 +63,7 @@ export async function GET(): Promise<NextResponse> {
       (sum, bucket) => sum + bucket.value,
       0,
     );
-    const totalCost = researchView.positions.reduce(
+    const totalCost = pricedResearchView.positions.reduce(
       (sum, position) => sum + position.shares * position.avgCost,
       0,
     );
@@ -65,7 +73,7 @@ export async function GET(): Promise<NextResponse> {
       {
         version: 1,
         data: {
-          positions: researchView.positions,
+          positions: pricedResearchView.positions,
           allocation,
           summary: {
             totalMarketValue,

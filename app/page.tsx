@@ -188,7 +188,9 @@ export default function Home() {
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: true,
-      dedupingInterval: 30_000,
+      dedupingInterval: 10_000,
+      refreshInterval: 60_000,
+      refreshWhenHidden: true,
     },
   );
 

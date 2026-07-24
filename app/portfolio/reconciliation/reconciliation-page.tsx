@@ -32,12 +32,14 @@ function signedPlain(value: number): string {
 function statusLabel(status: PendingSettlement["status"]): string {
   if (status === "pending") return "待交割";
   if (status === "overdue") return "已逾期";
+  if (status === "finance-settled") return "已入帳";
   return "已涵蓋";
 }
 
 function statusVariant(status: PendingSettlement["status"]): StatusVariant {
   if (status === "overdue") return "warning";
   if (status === "pending") return "info";
+  if (status === "finance-settled") return "positive";
   return "positive";
 }
 
@@ -79,7 +81,9 @@ export function ReconciliationPage() {
   }
 
   const activeSettlements = data.pendingSettlements.filter(
-    (settlement) => settlement.status !== "covered-by-cash-snapshot",
+    (settlement) =>
+      settlement.status !== "covered-by-cash-snapshot" &&
+      settlement.status !== "finance-settled",
   );
   const overallVariant: StatusVariant =
     data.status === "reconciled"

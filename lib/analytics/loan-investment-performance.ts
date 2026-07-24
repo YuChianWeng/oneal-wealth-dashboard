@@ -12,6 +12,7 @@ const LoanInvestmentEconomicsInputSchema = z
     estimatedDailyAdjustment: nonNegativeMoney,
     interestBaselineDate: z.string().date().nullable(),
     interestBaselineAmount: nonNegativeMoney.nullable(),
+    financingCostEstimate: nonNegativeMoney.nullable().optional(),
     linkedInterestPayments: z.array(nonNegativeMoney).nullable(),
   })
   .strict();
@@ -80,6 +81,33 @@ export function computeLoanInvestmentEconomics(
     input.interestBaselineDate !== null &&
     input.interestBaselineAmount !== null;
   if (!hasCompleteBaseline) {
+    if (
+      input.financingCostEstimate !== undefined &&
+      input.financingCostEstimate !== null
+    ) {
+      const financingCost = round(input.financingCostEstimate, 2);
+      const netStrategyValue = round(
+        input.grossStrategyValue - financingCost,
+        2,
+      );
+      const netReturnPct = round(
+        ((netStrategyValue - input.initialPrincipal) / input.initialPrincipal) *
+          100,
+      );
+      return LoanInvestmentEconomicsSchema.parse({
+        grossStrategyValue: input.grossStrategyValue,
+        grossReturnPct,
+        financingCost,
+        netStrategyValue,
+        netReturnPct,
+        annualLoanRate: input.annualLoanRate,
+        breakEvenAnnualReturnPct: round(input.annualLoanRate * 100),
+        costAsOfDate: input.costAsOfDate,
+        status: "partial",
+        statusReason:
+          "Financing cost uses the current policy-loan interest estimate",
+      });
+    }
     return unavailable(
       input,
       grossReturnPct,

@@ -56,6 +56,18 @@ describe("insurance policy financing baseline", () => {
     expect(result.value.financingCostStatus).toBe("confirmed");
   });
 
+  it("maps an explicit current-interest estimate without marking the baseline confirmed", () => {
+    const result = parseInsurancePolicyFrontmatter({
+      ...validSource,
+      loan_investment_financing_cost_estimate: 710,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.financingCostEstimate).toBe(710);
+    expect(result.value.financingCostStatus).toBe("needs-review");
+  });
+
   it("rejects a partial baseline pair without guessing the missing value", () => {
     const result = parseInsurancePolicyFrontmatter({
       ...validSource,

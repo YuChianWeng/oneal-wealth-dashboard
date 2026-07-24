@@ -34,6 +34,8 @@ export interface CashReconciliationInput {
   cashAsOfDate: string;
   holdingsMarketValue: number;
   trades: readonly CashReconciliationTrade[];
+  /** Trade IDs that have a confirmed finance settlement entry. */
+  financeSettledTradeIds?: ReadonlySet<string>;
 }
 
 export type InvestmentReconciliationCore = Omit<
@@ -208,6 +210,9 @@ export function computeInvestmentReconciliation(
         : inferredSettlementDate !== null
           ? "inferred-twse-t-plus-2"
           : "unavailable";
+    const financeSettled =
+      input.financeSettledTradeIds !== undefined &&
+      input.financeSettledTradeIds.has(trade.id);
     const coveredByCashSnapshot =
       cashCoverageDate !== null && input.cashAsOfDate >= cashCoverageDate;
     const overdueByDate =
@@ -217,12 +222,24 @@ export function computeInvestmentReconciliation(
       ageTradingDays !== null &&
       ageTradingDays > 2;
     const overdue =
-      !coveredByCashSnapshot && (overdueByDate || overdueByAge);
-    const status: PendingSettlement["status"] = coveredByCashSnapshot
-      ? "covered-by-cash-snapshot"
-      : overdue
-        ? "overdue"
-        : "pending";
+      !financeSettled &&
+      !coveredByCashSnapshot &&
+      (overdueByDate || overdueByAge);
+    let status: PendingSettlement["status"];
+    let effectiveCashAdjustment: number;
+    if (financeSettled) {
+      status = "finance-settled";
+      effectiveCashAdjustment = 0;
+    } else if (coveredByCashSnapshot) {
+      status = "covered-by-cash-snapshot";
+      effectiveCashAdjustment = 0;
+    } else if (overdue) {
+      status = "overdue";
+      effectiveCashAdjustment = normalizedAdjustment;
+    } else {
+      status = "pending";
+      effectiveCashAdjustment = normalizedAdjustment;
+    }
     if (overdue) {
       warnings.push(
         `Trade ${tradeId}: settlement overdue as of ${input.valuationDate}`,
@@ -237,7 +254,7 @@ export function computeInvestmentReconciliation(
       settlementDate: cashCoverageDate,
       settlementDateQuality,
       netCashflow: trade.netCashflow,
-      effectiveCashAdjustment: coveredByCashSnapshot ? 0 : normalizedAdjustment,
+      effectiveCashAdjustment,
       ageTradingDays,
       status,
     });

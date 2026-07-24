@@ -50,7 +50,9 @@ import {
   getAccountsList,
   getLoansSummary,
   getAvailableMonths,
+  getFinanceSettlements,
 } from "./finance-queries";
+import type { RawFinanceSettledRow } from "./finance-queries";
 import {
   mapMonthlySummary,
   mapCategoryBreakdown,
@@ -290,5 +292,20 @@ export function availableMonths(
     const db = getDb();
     const months = getAvailableMonths(db, limit);
     return ok(months);
+  });
+}
+
+/**
+ * Confirmed T+2 investment settlements from the Finance ledger.
+ * Used by reconciliation to distinguish a settled trade from a pending one.
+ */
+export function financeSettlements(): Result<
+  RawFinanceSettledRow[],
+  SourceError
+> {
+  return catchDbError("financeSettlements", () => {
+    const db = getDb();
+    const rows = getFinanceSettlements(db);
+    return ok(rows);
   });
 }

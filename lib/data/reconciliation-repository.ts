@@ -9,6 +9,7 @@ import {
   type LoanInvestmentPerformance,
 } from "@/lib/data/loan-investment-repository";
 import { listAllTrades } from "@/lib/data/portfolio-repository";
+import { financeSettlements } from "@/lib/data/finance-repository";
 import type { TradeRecord } from "@/lib/schemas/portfolio";
 import { SourceError } from "@/lib/errors";
 import { err, ok, type Result } from "@/lib/result";
@@ -76,6 +77,7 @@ function reconciliationPoint(
 export function investmentReconciliationInsightStateFromSources(
   performance: LoanInvestmentPerformance,
   trades: TradeRecord[],
+  financeSettledKeys?: ReadonlySet<string>,
 ): Result<InvestmentReconciliationInsightState, SourceError> {
   const pointResult = reconciliationPoint(performance);
   if (!pointResult.ok) return pointResult;
@@ -95,11 +97,18 @@ export function investmentReconciliationInsightStateFromSources(
         settlementDate: trade.settlementDate ?? null,
         netCashflow: trade.netCashflow,
       })),
+      ...(financeSettledKeys !== undefined && financeSettledKeys.size > 0
+        ? { financeSettledTradeIds: financeSettledKeys }
+        : {}),
     });
 
     const warnings = [...computed.warnings];
+    // Only trades still requiring cash treatment are pending. A
+    // finance-settled trade has an explicit settlement ledger entry and must
+    // not inflate the snapshot's pending trade count.
     const pendingCount = computed.pendingSettlements.filter(
-      (settlement) => settlement.status !== "covered-by-cash-snapshot",
+      (settlement) =>
+        settlement.status === "pending" || settlement.status === "overdue",
     ).length;
     const checks: Array<[string, number | null, number]> = [
       [
@@ -177,9 +186,27 @@ function loadInvestmentReconciliationInsightState(): Result<
   if (!pointResult.ok) return pointResult;
   const tradesResult = listAllTrades();
   if (!tradesResult.ok) return tradesResult;
+
+  // The T+2 runner stores idempotency keys as
+  // "tplus2-order:{broker}:{orderId}". Strip the runner prefix and hash the
+  // remaining trade identity using the same public-ID boundary as trades.
+  let financeSettledKeys: Set<string> | undefined;
+  const settlementsResult = financeSettlements();
+  if (settlementsResult.ok && settlementsResult.value.length > 0) {
+    financeSettledKeys = new Set(
+      settlementsResult.value.map((row) => {
+        const identity = row.idempotency_key.startsWith("tplus2-")
+          ? row.idempotency_key.slice("tplus2-".length)
+          : row.idempotency_key;
+        return publicTradeId(identity);
+      }),
+    );
+  }
+
   return investmentReconciliationInsightStateFromSources(
     performanceResult.value,
     tradesResult.value,
+    financeSettledKeys,
   );
 }
 

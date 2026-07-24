@@ -8,6 +8,7 @@ import { MetricCard } from "@/components/ui/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
+import { PortfolioMarketPanel } from "@/components/market/portfolio-market-panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import { useApi } from "@/lib/hooks/use-api";
 import { formatTWD, formatPercent } from "@/lib/format";
@@ -52,8 +53,13 @@ type SortDir = "asc" | "desc";
 // ---------------------------------------------------------------------------
 
 export default function PortfolioPage() {
-  const { data, error, isLoading, mutate } =
-    useApi<PortfolioResponse>("/api/portfolio");
+  const { data, error, isLoading, isValidating, mutate } =
+    useApi<PortfolioResponse>("/api/portfolio", {
+      refreshInterval: 60_000,
+      dedupingInterval: 10_000,
+      revalidateOnFocus: false,
+      refreshWhenHidden: true,
+    });
 
   const [sortKey, setSortKey] = useState<SortKey>("marketValue");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -118,7 +124,14 @@ export default function PortfolioPage() {
   // ── Loading ──────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <AppShell navSections={stubNavSections} topbar={{ title: "持倉總覽" }}>
+      <AppShell
+        navSections={stubNavSections}
+        topbar={{
+          title: "持倉總覽",
+          subtitle: isValidating ? "行情更新中…" : "持倉現價每分鐘更新",
+        }}
+      >
+        <PortfolioMarketPanel />
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} height={120} />
@@ -132,7 +145,14 @@ export default function PortfolioPage() {
   // ── Error ────────────────────────────────────────────────────────────
   if (error || !data) {
     return (
-      <AppShell navSections={stubNavSections} topbar={{ title: "持倉總覽" }}>
+      <AppShell
+        navSections={stubNavSections}
+        topbar={{
+          title: "持倉總覽",
+          subtitle: isValidating ? "行情更新中…" : "持倉現價每分鐘更新",
+        }}
+      >
+        <PortfolioMarketPanel />
         <ErrorState
           message={error?.message ?? "無法載入持倉資料"}
           onRetry={() => mutate()}
@@ -144,7 +164,14 @@ export default function PortfolioPage() {
   // ── Empty ────────────────────────────────────────────────────────────
   if (data.positions.length === 0) {
     return (
-      <AppShell navSections={stubNavSections} topbar={{ title: "持倉總覽" }}>
+      <AppShell
+        navSections={stubNavSections}
+        topbar={{
+          title: "持倉總覽",
+          subtitle: isValidating ? "行情更新中…" : "持倉現價每分鐘更新",
+        }}
+      >
+        <PortfolioMarketPanel />
         <EmptyState
           title="尚無持倉"
           description="目前沒有任何開放中的持倉部位。"
@@ -156,7 +183,14 @@ export default function PortfolioPage() {
   const totalMv = data.summary.totalMarketValue;
 
   return (
-    <AppShell navSections={stubNavSections} topbar={{ title: "持倉總覽" }}>
+    <AppShell
+      navSections={stubNavSections}
+      topbar={{
+        title: "持倉總覽",
+        subtitle: isValidating ? "行情更新中…" : "持倉現價每分鐘更新",
+      }}
+    >
+      <PortfolioMarketPanel />
       {/* ── Summary cards ──────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <MetricCard

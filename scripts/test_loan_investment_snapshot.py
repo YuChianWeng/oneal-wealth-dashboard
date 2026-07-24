@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -474,6 +475,81 @@ class AccountFreshnessTests(unittest.TestCase):
                     "CathayBank", "2026-07-13"
                 )
             self.assertEqual(result["source"], "finance-raw-event")
+
+    def test_confirmed_settlements_are_absorbed_after_cash_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "finance.db"
+            con = sqlite3.connect(db_path)
+            con.execute(
+                """
+                CREATE TABLE transactions (
+                    transaction_type TEXT,
+                    account_key TEXT,
+                    date TEXT,
+                    signed_amount REAL,
+                    status TEXT
+                )
+                """
+            )
+            con.execute(
+                "INSERT INTO transactions VALUES (?, ?, ?, ?, ?)",
+                ("investment_settlement", "CathayBank", "2026-07-15", 8743, "confirmed"),
+            )
+            con.commit()
+            con.close()
+
+            with patch.object(snapshot, "FINANCE_DB", db_path):
+                result = snapshot.cash_state_after_confirmed_settlements(
+                    {
+                        "balance": 44847.0,
+                        "as_of_date": "2026-07-12",
+                        "source": "weekly-balance-md-cron",
+                        "quality": "confirmed-explicit-event",
+                    },
+                    "2026-07-16",
+                )
+
+            self.assertEqual(result["balance"], 53590.0)
+            self.assertEqual(result["as_of_date"], "2026-07-15")
+            self.assertEqual(result["source"], "finance-settlement-ledger")
+            self.assertEqual(result["quality"], "confirmed-explicit-event")
+
+    def test_settlements_on_or_before_cash_snapshot_are_not_reapplied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "finance.db"
+            con = sqlite3.connect(db_path)
+            con.execute(
+                """
+                CREATE TABLE transactions (
+                    transaction_type TEXT,
+                    account_key TEXT,
+                    date TEXT,
+                    signed_amount REAL,
+                    status TEXT
+                )
+                """
+            )
+            con.execute(
+                "INSERT INTO transactions VALUES (?, ?, ?, ?, ?)",
+                ("investment_settlement", "CathayBank", "2026-07-12", 8743, "confirmed"),
+            )
+            con.commit()
+            con.close()
+
+            with patch.object(snapshot, "FINANCE_DB", db_path):
+                result = snapshot.cash_state_after_confirmed_settlements(
+                    {
+                        "balance": 53590.0,
+                        "as_of_date": "2026-07-12",
+                        "source": "weekly-balance-md-cron",
+                        "quality": "confirmed-explicit-event",
+                    },
+                    "2026-07-16",
+                )
+
+            self.assertEqual(result["balance"], 53590.0)
+            self.assertEqual(result["as_of_date"], "2026-07-12")
+            self.assertEqual(result["source"], "weekly-balance-md-cron")
 
 
 if __name__ == "__main__":

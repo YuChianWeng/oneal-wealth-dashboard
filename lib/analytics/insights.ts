@@ -76,7 +76,7 @@ export interface ReconciliationInsightInput {
   pendingSettlements: readonly {
     id: string;
     symbol: string;
-    status: "pending" | "overdue" | "covered-by-cash-snapshot";
+    status: "pending" | "overdue" | "covered-by-cash-snapshot" | "finance-settled";
   }[];
   /** Snapshot strategy value minus the independently reconciled value. */
   strategyEquationDelta?: number | null;
@@ -272,12 +272,17 @@ function checkFinancingIntegrity(
   if (!financing || financing.status === "confirmed") return [];
   const reason =
     financing.statusReason?.trim() || "Financing inputs are incomplete";
+  const qualification =
+    financing.status === "partial"
+      ? "Net strategy value and net return are estimates until financing data is confirmed."
+      : "Net strategy value and net return must not be relied on until financing data is " +
+        "confirmed.";
   return [
     makeInsight({
       rule: "financing-integrity",
       severity: "action-needed",
       title: "Loan financing cost needs review",
-      description: `${reason}. Net strategy value and net return must not be relied on until financing data is confirmed.`,
+      description: `${reason}. ${qualification}`,
       drillThroughUrl: "/growth",
     }),
   ];

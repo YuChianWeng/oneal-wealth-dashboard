@@ -765,6 +765,24 @@ describe("financing integrity", () => {
     },
   );
 
+  it("qualifies partial financing economics as estimates", () => {
+    const insight = generateInsights({
+      financing: {
+        status: "partial",
+        statusReason:
+          "Financing cost uses the current policy-loan interest estimate",
+      },
+      now: NOW,
+    }).find((item) => item.id.includes("financing-integrity"));
+
+    expect(insight?.description).toContain(
+      "Net strategy value and net return are estimates",
+    );
+    expect(insight?.description).not.toContain(
+      "must not be relied on until financing data is confirmed",
+    );
+  });
+
   it("does not flag confirmed financing economics", () => {
     expect(
       generateInsights({

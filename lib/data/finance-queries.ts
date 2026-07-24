@@ -96,6 +96,11 @@ export interface RawBalanceSnapshotRow {
   currency: string;
 }
 
+export interface RawFinanceSettledRow {
+  idempotency_key: string;
+  note: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Query cache helpers (for tests that re-use the same db handle)
 // ---------------------------------------------------------------------------
@@ -333,4 +338,25 @@ export function getLoansSummary(db: Database.Database): RawLoanRow[] {
     ORDER BY l.display_name
   `;
   return db.prepare(sql).all() as RawLoanRow[];
+}
+
+/**
+ * Fetch confirmed investment settlement entries created by the T+2 runner.
+ * The idempotency key embeds the broker/order identity used to cross-reference
+ * the corresponding portfolio trade.
+ */
+export function getFinanceSettlements(
+  db: Database.Database,
+): RawFinanceSettledRow[] {
+  const sql = `
+    SELECT
+      t.idempotency_key,
+      t.note
+    FROM transactions t
+    WHERE t.transaction_type = 'investment_settlement'
+      AND t.source = 'tplus2-settlement'
+      AND t.status = 'confirmed'
+    ORDER BY t.date DESC
+  `;
+  return db.prepare(sql).all() as RawFinanceSettledRow[];
 }

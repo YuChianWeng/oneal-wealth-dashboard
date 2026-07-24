@@ -424,4 +424,48 @@ describe("computeInvestmentReconciliation", () => {
       "Trade bad-date: invalid tradeDate (not-a-date)",
     ]);
   });
+
+  describe("finance-settled trades", () => {
+    it("zeroes the adjustment and excludes the trade from pending count", () => {
+      const result = computeInvestmentReconciliation(
+        baseInput({
+          valuationDate: "2026-07-16",
+          cashAsOfDate: "2026-07-12",
+          trades: [trade({ id: "finance-settled" })],
+          financeSettledTradeIds: new Set(["finance-settled"]),
+        }),
+      );
+
+      expect(result.pendingTradeCashAdjustment).toBe(0);
+      expect(result.pendingSettlements[0]).toEqual(
+        expect.objectContaining({
+          id: "finance-settled",
+          status: "finance-settled",
+          effectiveCashAdjustment: 0,
+        }),
+      );
+      expect(result.warnings).toEqual([]);
+    });
+
+    it("does not let a finance-settled trade become overdue", () => {
+      const result = computeInvestmentReconciliation(
+        baseInput({
+          valuationDate: "2026-07-16",
+          cashAsOfDate: "2026-07-12",
+          trades: [
+            trade({
+              id: "finance-settled-overdue",
+              tradeDate: "2026-07-08",
+              settlementDate: "2026-07-10",
+            }),
+          ],
+          financeSettledTradeIds: new Set(["finance-settled-overdue"]),
+        }),
+      );
+
+      expect(result.pendingSettlements[0]?.status).toBe("finance-settled");
+      expect(result.status).toBe("reconciled");
+      expect(result.warnings).toEqual([]);
+    });
+  });
 });

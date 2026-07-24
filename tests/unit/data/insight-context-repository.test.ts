@@ -146,6 +146,26 @@ describe("loadPhaseOneInsightContext", () => {
     );
   });
 
+  it("exposes only an allowlisted financing blocker", () => {
+    sourceMocks.loanInvestmentPerformance.mockReturnValue({
+      ok: true,
+      value: {
+        economics: {
+          status: "needs-review",
+          statusReason:
+            "Interest baseline requires a confirmed date and amount",
+          financingCost: null,
+          grossStrategyValue: 100,
+        },
+      },
+    });
+
+    expect(loadPhaseOneInsightContext(now).financing).toEqual({
+      status: "needs-review",
+      statusReason: "Confirm the loan-interest baseline date and amount",
+    });
+  });
+
   it("omits reconciliation, trade integrity, and financing when unavailable", () => {
     sourceMocks.investmentReconciliationInsightStateFromSources.mockReturnValue(
       sourceError("RECONCILIATION_SOURCE_UNAVAILABLE"),

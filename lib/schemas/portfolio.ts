@@ -57,6 +57,9 @@ export const PositionSummarySchema = z
     conviction: z.number().int().min(1).max(5).nullable().optional(),
     status: z.string().optional(),
     lastChecked: dateStr().nullable().optional(),
+    priceSource: z.enum(["kgi", "twse", "taifex"]).nullable().optional(),
+    priceObservedAt: dateStr().nullable().optional(),
+    priceIsStale: z.boolean().optional(),
   })
   .strict();
 

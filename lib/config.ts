@@ -44,6 +44,10 @@ const APP_TIMEZONE = optionalEnv("APP_TIMEZONE", "Asia/Taipei");
 const APP_ORIGIN = optionalEnv("APP_ORIGIN", "http://localhost:3003");
 const PORT = parseInt(optionalEnv("PORT", "3003"), 10);
 const INSIGHT_CASH_STALE_DAYS_RAW = optionalEnv("INSIGHT_CASH_STALE_DAYS", "7");
+const MARKET_SNAPSHOT_PATH = optionalEnv(
+  "MARKET_SNAPSHOT_PATH",
+  "/home/ubuntu/data/market/wealth-market-snapshot.json",
+);
 
 const VAULT_ROOT = "/home/ubuntu/ObsidianVault";
 const DATA_ROOT = "/home/ubuntu/data/finance";
@@ -95,6 +99,7 @@ export interface ServerConfig {
   readonly origin: string;
   readonly port: number;
   readonly insightCashStaleDays: number;
+  readonly marketSnapshotPath: string;
   readonly vaultRoot: string;
   readonly dataRoot: string;
   readonly warnings: readonly string[];
@@ -107,6 +112,7 @@ export const config: ServerConfig = Object.freeze({
   origin: APP_ORIGIN,
   port: PORT,
   insightCashStaleDays: INSIGHT_CASH_STALE_DAYS,
+  marketSnapshotPath: MARKET_SNAPSHOT_PATH,
   vaultRoot: VAULT_ROOT,
   dataRoot: DATA_ROOT,
   warnings: Object.freeze(warnings),

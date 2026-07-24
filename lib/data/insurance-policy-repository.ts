@@ -40,6 +40,11 @@ const SourceSchema = z.object({
     .finite()
     .nonnegative()
     .optional(),
+  loan_investment_financing_cost_estimate: z.coerce
+    .number()
+    .finite()
+    .nonnegative()
+    .optional(),
 });
 
 function asDate(value: string | Date): string {
@@ -98,6 +103,8 @@ export function parseInsurancePolicyFrontmatter(
     loanInvestmentInterestBaselineAmount: hasCompleteBaseline
       ? policy.loan_investment_interest_baseline_amount!
       : null,
+    financingCostEstimate:
+      policy.loan_investment_financing_cost_estimate ?? null,
     financingCostStatus: hasCompleteBaseline ? "confirmed" : "needs-review",
   });
 

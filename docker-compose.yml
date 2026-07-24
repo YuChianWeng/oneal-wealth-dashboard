@@ -16,6 +16,8 @@ services:
       - APP_ORIGIN=http://127.0.0.1:3003
       - FINANCE_DB_PATH=/data/finance/finance.db
       - OBSIDIAN_VAULT_PATH=/data/obsidian
+      - MARKET_SNAPSHOT_PATH=/data/market/wealth-market-snapshot.json
+      - MARKET_HISTORY_DIR=/data/market/history
 
     env_file:
       - .env.production
@@ -32,9 +34,14 @@ services:
         source: ${OBSIDIAN_VAULT_PATH:-/dev/null}
         target: /data/obsidian
         read_only: true
+      - type: bind
+        source: ${MARKET_DATA_DIR:-/home/ubuntu/data/market}
+        target: /data/market
+        read_only: true
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:3003/api/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -fsS http://localhost:3003/api/health || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 15s
